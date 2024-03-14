@@ -22,6 +22,7 @@ N = 128
 # shard_x is "data parallel"
 # shard_w is "model parallel"
 
+
 @unittest.skipIf(CI and Device.DEFAULT in {"GPU", "CUDA", "METAL"}, "no GPU CI")
 class TestMultiTensor(unittest.TestCase):
   def test_to(self):
@@ -66,10 +67,17 @@ class TestMultiTensor(unittest.TestCase):
     O = X + W
     np.testing.assert_allclose(O.numpy(), 2)
 
-  def test_simple_add(self): return self._test_simple_add_axis(None, None)
-  def test_simple_add_X(self): return self._test_simple_add_axis(0, None)
-  def test_simple_add_W(self): return self._test_simple_add_axis(None, 0)
-  def test_simple_add_XW(self): return self._test_simple_add_axis(0, 0)
+  def test_simple_add(self):
+    return self._test_simple_add_axis(None, None)
+
+  def test_simple_add_X(self):
+    return self._test_simple_add_axis(0, None)
+
+  def test_simple_add_W(self):
+    return self._test_simple_add_axis(None, 0)
+
+  def test_simple_add_XW(self):
+    return self._test_simple_add_axis(0, 0)
 
   def test_four_add(self):
     X = Tensor.ones(256, 256).contiguous().realize()
@@ -79,10 +87,16 @@ class TestMultiTensor(unittest.TestCase):
     O = X + W
     np.testing.assert_allclose(O.numpy(), 2)
 
-  @given(strat.sampled_from((4, 5)), strat.sampled_from((devices_2, devices_3)), strat.sampled_from((ReduceOps.SUM, ReduceOps.MAX)),
-         strat.sampled_from((None, 0, 1)), strat.sampled_from((None, 0, 1)), strat.sampled_from((1, 0, -1)))
+  @given(
+    strat.sampled_from((4, 5)),
+    strat.sampled_from((devices_2, devices_3)),
+    strat.sampled_from((ReduceOps.SUM, ReduceOps.MAX)),
+    strat.sampled_from((None, 0, 1)),
+    strat.sampled_from((None, 0, 1)),
+    strat.sampled_from((1, 0, -1)),
+  )
   def test_simple_reduce(self, N, devices, rop, shard_axis, reduce_axis, sign):
-    X = Tensor.rand(N*N).reshape(N, N).mul(sign)
+    X = Tensor.rand(N * N).reshape(N, N).mul(sign)
     n = X.numpy()
     X.shard_(devices, shard_axis)
     f = {ReduceOps.SUM: lambda x: x.sum(reduce_axis), ReduceOps.MAX: lambda x: x.max(reduce_axis)}[rop]
@@ -95,7 +109,7 @@ class TestMultiTensor(unittest.TestCase):
     W = Tensor.kaiming_uniform(N, N).realize()
     Xs = X.shard(device, shard_x)
     Ws = W.shard(device, shard_w)
-    O = (Xs@Ws)
+    O = Xs @ Ws
     np.testing.assert_allclose(X.numpy() @ W.numpy(), O.to(Device.DEFAULT).numpy(), atol=1e-5)
 
   def _test_double_matmul_shard_axis(self, shard_x, shard_w, device):
@@ -105,55 +119,83 @@ class TestMultiTensor(unittest.TestCase):
     Xs = X.shard(device, shard_x)
     W1s = W1.shard(device, shard_w)
     W2s = W2.shard(device, shard_w)
-    O = (Xs@W1s)@W2s
+    O = (Xs @ W1s) @ W2s
     np.testing.assert_allclose((X.numpy() @ W1.numpy()) @ W2.numpy(), O.to(Device.DEFAULT).numpy(), atol=1e-5)
 
-  def test_matmul_shard_none(self): return self._test_matmul_shard_axis(None, None, devices_2)
-  def test_matmul_shard_X_0(self): return self._test_matmul_shard_axis(0, None, devices_2)
-  def test_matmul_shard_X_1(self): return self._test_matmul_shard_axis(1, None, devices_2)
-  def test_matmul_shard_W_0(self): return self._test_matmul_shard_axis(None, 0, devices_2)
-  def test_matmul_shard_W_1(self): return self._test_matmul_shard_axis(None, 1, devices_2)
+  def test_matmul_shard_none(self):
+    return self._test_matmul_shard_axis(None, None, devices_2)
 
-  def test_matmul_shard_0_0(self): return self._test_matmul_shard_axis(0, 0, devices_2)
-  def test_matmul_shard_0_1(self): return self._test_matmul_shard_axis(0, 1, devices_2)
-  def test_matmul_shard_1_0(self): return self._test_matmul_shard_axis(1, 0, devices_2)
-  def test_matmul_shard_1_1(self): return self._test_matmul_shard_axis(1, 1, devices_2)
+  def test_matmul_shard_X_0(self):
+    return self._test_matmul_shard_axis(0, None, devices_2)
 
-  def test_double_matmul_shard_X_0(self): return self._test_double_matmul_shard_axis(0, None, devices_2)
-  def test_double_matmul_shard_X_1(self): return self._test_double_matmul_shard_axis(1, None, devices_2)
-  def test_double_matmul_shard_W_0(self): return self._test_double_matmul_shard_axis(None, 0, devices_2)
-  def test_double_matmul_shard_W_1(self): return self._test_double_matmul_shard_axis(None, 1, devices_2)
+  def test_matmul_shard_X_1(self):
+    return self._test_matmul_shard_axis(1, None, devices_2)
+
+  def test_matmul_shard_W_0(self):
+    return self._test_matmul_shard_axis(None, 0, devices_2)
+
+  def test_matmul_shard_W_1(self):
+    return self._test_matmul_shard_axis(None, 1, devices_2)
+
+  def test_matmul_shard_0_0(self):
+    return self._test_matmul_shard_axis(0, 0, devices_2)
+
+  def test_matmul_shard_0_1(self):
+    return self._test_matmul_shard_axis(0, 1, devices_2)
+
+  def test_matmul_shard_1_0(self):
+    return self._test_matmul_shard_axis(1, 0, devices_2)
+
+  def test_matmul_shard_1_1(self):
+    return self._test_matmul_shard_axis(1, 1, devices_2)
+
+  def test_double_matmul_shard_X_0(self):
+    return self._test_double_matmul_shard_axis(0, None, devices_2)
+
+  def test_double_matmul_shard_X_1(self):
+    return self._test_double_matmul_shard_axis(1, None, devices_2)
+
+  def test_double_matmul_shard_W_0(self):
+    return self._test_double_matmul_shard_axis(None, 0, devices_2)
+
+  def test_double_matmul_shard_W_1(self):
+    return self._test_double_matmul_shard_axis(None, 1, devices_2)
 
   def test_conv_data_shard(self):
     conv = nn.Conv2d(3, 16, 3, bias=False)
-    for p in get_parameters(conv): p.shard_((d0, d1))
+    for p in get_parameters(conv):
+      p.shard_((d0, d1))
     fake_image = Tensor.rand((2, 3, 32, 32)).shard((d0, d1), axis=0)
     out = conv(fake_image)
     out.numpy()
 
   def test_conv_bias_data_shard(self):
     conv = nn.Conv2d(3, 16, 3)
-    for p in get_parameters(conv): p.shard_((d0, d1))
+    for p in get_parameters(conv):
+      p.shard_((d0, d1))
     fake_image = Tensor.rand((2, 3, 32, 32)).shard((d0, d1), axis=0)
     out = conv(fake_image)
     out.numpy()
 
   def test_backprop_conv(self):
     conv = nn.Conv2d(3, 16, 3)
-    for p in get_parameters(conv): p.shard_((d0, d1))
+    for p in get_parameters(conv):
+      p.shard_((d0, d1))
     optim = nn.optim.Adam(get_parameters(conv))
     fake_image = Tensor.rand((2, 3, 32, 32)).shard((d0, d1), axis=0)
     out = conv(fake_image)
     optim.zero_grad()
     out.mean().backward()
-    #for p in get_parameters(conv): p.grad.realize()
+    # for p in get_parameters(conv): p.grad.realize()
     optim.step()
     out.numpy()
 
   def test_lr_scheduler_OneCycleLR(self):
     from extra.lr_scheduler import OneCycleLR
+
     conv = nn.Conv2d(3, 16, 3)
-    for p in get_parameters(conv): p.shard_((d0, d1))
+    for p in get_parameters(conv):
+      p.shard_((d0, d1))
     optim = nn.optim.SGD(get_parameters(conv))
     lr_sched = OneCycleLR(optim, max_lr=0.1, pct_start=0.1, div_factor=100, final_div_factor=0.1, total_steps=10)
     lr_sched.step()
@@ -174,6 +216,7 @@ class TestMultiTensor(unittest.TestCase):
 
   def test_rmsnorm(self):
     from extra.models.llama import RMSNorm
+
     B, T, embed_size = 4, 10, 20
 
     layer_norm = RMSNorm(embed_size)
@@ -197,6 +240,7 @@ class TestMultiTensor(unittest.TestCase):
 
   def test_data_parallel_resnet(self):
     import sys, pathlib
+
     sys.path.append((pathlib.Path(__file__).parent.parent / "extra" / "models").as_posix())
     from resnet import ResNet18
 
@@ -205,7 +249,8 @@ class TestMultiTensor(unittest.TestCase):
     m = ResNet18()
     m.load_from_pretrained()
     real_output = m(fake_image).log_softmax().numpy()
-    for p in get_parameters(m): p.shard_((d0, d1)).realize()
+    for p in get_parameters(m):
+      p.shard_((d0, d1)).realize()
     GlobalCounters.reset()
     shard_output = m(fake_image_sharded).log_softmax().realize()
     assert shard_output.lazydata.lbs[0].shape == (1, 1000)
@@ -215,6 +260,7 @@ class TestMultiTensor(unittest.TestCase):
 
   def test_data_parallel_resnet_train_step(self):
     import sys, pathlib
+
     sys.path.append((pathlib.Path(__file__).parent.parent / "extra" / "models").as_posix())
     from resnet import ResNet18
     from examples.mlperf.optimizers import LARS
@@ -233,7 +279,8 @@ class TestMultiTensor(unittest.TestCase):
     output.backward()
     grad = m.conv1.weight.grad.numpy()
 
-    for p in get_parameters(m): p.shard_((d0, d1)).realize()
+    for p in get_parameters(m):
+      p.shard_((d0, d1)).realize()
     GlobalCounters.reset()
     optimizer.zero_grad()
     shard_output = m(fake_image_sharded).sparse_categorical_crossentropy(labels_sharded, label_smoothing=0.1)
@@ -254,7 +301,7 @@ class TestMultiTensor(unittest.TestCase):
       a.shard_((d0, d1))
       b.shard_((d0, d1))
       c = jf(a, b)
-      np.testing.assert_allclose(c.numpy(), a.numpy()+b.numpy(), atol=1e-4, rtol=1e-5)
+      np.testing.assert_allclose(c.numpy(), a.numpy() + b.numpy(), atol=1e-4, rtol=1e-5)
     assert len(jf.jit_cache) > 0
 
   def test_multi_tensor_jit_body(self):
@@ -268,16 +315,17 @@ class TestMultiTensor(unittest.TestCase):
 
     for _ in range(5):
       r = jf()
-      np.testing.assert_allclose(r.numpy(), np.ones(256)+np.ones(256), atol=1e-4, rtol=1e-5)
+      np.testing.assert_allclose(r.numpy(), np.ones(256) + np.ones(256), atol=1e-4, rtol=1e-5)
     assert len(jf.jit_cache) > 0
 
-  #@unittest.skipIf(CI and Device.DEFAULT=="METAL", "no ICB in CI, creation of graph fails")
+  # @unittest.skipIf(CI and Device.DEFAULT=="METAL", "no ICB in CI, creation of graph fails")
   @unittest.skip("test broken")
   def test_multi_device_jit_graph(self):
-    if Device[d0].graph is None or Device[d1].graph is None: raise unittest.SkipTest("only test graphs")
+    if Device[d0].graph is None or Device[d1].graph is None:
+      raise unittest.SkipTest("only test graphs")
 
     @TinyJit
-    def jf(a: Tensor, b: Tensor, c: Tensor, d:Tensor):
+    def jf(a: Tensor, b: Tensor, c: Tensor, d: Tensor):
       # Create 80 entries on device 0: 2 batches.
       for _ in range(40):
         a = ((a + b).realize() + (a * b).realize()).realize()
@@ -317,7 +365,7 @@ class TestMultiTensor(unittest.TestCase):
       X.shard_(devices, 2)
       np.testing.assert_equal(X.numpy(), n)
       np.testing.assert_equal(X.reshape(2, 2, 257).numpy(), n.reshape((2, 2, 257)))
-      np.testing.assert_equal(X.shrink(((0,2), (0, 1), (0,257))).numpy(), n[0:2, 0:1, 0:257])
+      np.testing.assert_equal(X.shrink(((0, 2), (0, 1), (0, 257))).numpy(), n[0:2, 0:1, 0:257])
       np.testing.assert_equal(X.expand((4, 4, 257)).numpy(), np.tile(n, (1, 4, 1)))
       np.testing.assert_equal(X.permute((0, 2, 1)).numpy(), np.transpose(n, (0, 2, 1)))
 
@@ -325,7 +373,8 @@ class TestMultiTensor(unittest.TestCase):
     devices = (d0, d1, d2, d3)
     t = Tensor.empty((16, 64, 112, 112)).shard(devices, axis=0)
     bn = nn.BatchNorm2d(64)
-    for p in get_parameters(bn): p.shard_(devices).realize()
+    for p in get_parameters(bn):
+      p.shard_(devices).realize()
 
     out = bn(t)
     scheds = [sched for sched in create_schedule(out.lazydata.lbs) if sched.outputs[0].device in devices and sched.ast[0].op is not LoadOps.COPY]
@@ -334,7 +383,7 @@ class TestMultiTensor(unittest.TestCase):
     assert len(asts) == 8, len(asts)
     # test case to show that ast can be different on devices
     # TODO: make ast identical on devices
-    #assert len(set(asts)) == 4, len(asts)
+    # assert len(set(asts)) == 4, len(asts)
     # for i, ast in enumerate(asts):
     #   print(f"{i} {ast}")
 
@@ -347,7 +396,10 @@ class TestMultiTensor(unittest.TestCase):
     t1 = t0.reshape((26, 3, 5, 7))
     t2 = t0.reshape((26, 3, 35))
     t3 = t1.reshape((26, 15, 7))
-    t4 = t2.reshape((26, 105,))
+    t4 = t2.reshape((
+      26,
+      105,
+    ))
 
     for t in [t0, t1, t2, t3, t4]:
       assert t.lazydata.axis == 1
@@ -371,7 +423,7 @@ class TestMultiTensor(unittest.TestCase):
 
     # test no left join
     with self.assertRaises((AssertionError, ValueError)):
-      t0.reshape((26*15,7))
+      t0.reshape((26 * 15, 7))
 
   def test_reshape_on_axis_uneven(self):
     devices = (d0, d1, d2)
@@ -379,7 +431,7 @@ class TestMultiTensor(unittest.TestCase):
 
     # no split axis if uneven
     with self.assertRaises((AssertionError, ValueError)):
-      t0.reshape((4,4,2,15))
+      t0.reshape((4, 4, 2, 15))
 
     # ok to split reshape left and right though
     t1 = t0.reshape(2, 2, 8, 3, 5)
@@ -401,6 +453,7 @@ class TestMultiTensor(unittest.TestCase):
     output = X.dropout(0.5)
     output.numpy()
     Tensor.training = False
+
 
 @unittest.skipIf(CI and Device.DEFAULT in {"GPU", "CUDA", "METAL"}, "no GPU CI")
 class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
@@ -437,10 +490,10 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
     t.shard_([f"{Device.DEFAULT}:{i}" for i in range(4)], axis=0)
     for i in range(4):
       print(f"{i=}")
-      a = t.shrink(((0+2*i,2+2*i),None))
-      b = Tensor(t.numpy()[0+2*i:2+2*i])
+      a = t.shrink(((0 + 2 * i, 2 + 2 * i), None))
+      b = Tensor(t.numpy()[0 + 2 * i : 2 + 2 * i])
       assert a.shape == b.shape == (2, 8)
-      assert a.lazydata.real == [i==j for j in range(4)]
+      assert a.lazydata.real == [i == j for j in range(4)]
       np.testing.assert_allclose(a.numpy(), b.numpy())
       # cast
       np.testing.assert_allclose(a.float().numpy(), b.float().numpy())
@@ -449,10 +502,10 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
       np.testing.assert_allclose(a.exp().numpy(), b.exp().numpy(), rtol=1e-7, atol=1e-3)
       np.testing.assert_allclose(a.reciprocal().numpy(), b.reciprocal().numpy(), rtol=1e-7, atol=1e-3)
       np.testing.assert_allclose(a.pow(-0.5).numpy(), b.pow(-0.5).numpy(), rtol=1e-7, atol=1e-3)
-      np.testing.assert_allclose((a+a).numpy(), (b+b).numpy(), rtol=1e-7, atol=1e-3)
-      np.testing.assert_equal((a+1).numpy(), (b+1).numpy())
-      np.testing.assert_equal((1+a).numpy(), (1+b).numpy())
-      np.testing.assert_allclose((a.where(a+a, a)).numpy(), (b.where(b+b, b)).numpy(), rtol=1e-7, atol=1e-3)
+      np.testing.assert_allclose((a + a).numpy(), (b + b).numpy(), rtol=1e-7, atol=1e-3)
+      np.testing.assert_equal((a + 1).numpy(), (b + 1).numpy())
+      np.testing.assert_equal((1 + a).numpy(), (1 + b).numpy())
+      np.testing.assert_allclose((a.where(a + a, a)).numpy(), (b.where(b + b, b)).numpy(), rtol=1e-7, atol=1e-3)
       np.testing.assert_allclose((a.where(1, 0)).numpy(), (b.where(1, 0)).numpy(), rtol=1e-7, atol=1e-3)
 
       # reduce
@@ -467,7 +520,9 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
       np.testing.assert_allclose(a.mean(1).numpy(), b.mean(1).numpy(), rtol=1e-7, atol=1e-3)
 
       # pad it back
-      np.testing.assert_allclose(a.pad(((2*i, 2*(4-i-1)), None)).numpy(), b.pad(((2*i, 2*(4-i-1)), None)).numpy(), rtol=1e-7, atol=1e-3)
+      np.testing.assert_allclose(
+        a.pad(((2 * i, 2 * (4 - i - 1)), None)).numpy(), b.pad(((2 * i, 2 * (4 - i - 1)), None)).numpy(), rtol=1e-7, atol=1e-3
+      )
 
       # other movement
       np.testing.assert_allclose(a.pad((None, (1, 1))).numpy(), b.pad((None, (1, 1))).numpy(), rtol=1e-7, atol=1e-3)
@@ -487,12 +542,12 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
     nb = t.numpy()[2:3]
     np.testing.assert_equal(a.numpy(), na)
     np.testing.assert_equal(b.numpy(), nb)
-    np.testing.assert_equal((a+1).numpy(), na+1)
-    np.testing.assert_equal((b+1).numpy(), nb+1)
-    np.testing.assert_equal((1+a).numpy(), 1+na)
-    np.testing.assert_equal((1+b).numpy(), 1+nb)
-    np.testing.assert_equal((a+a).numpy(), na+na)
-    np.testing.assert_equal((b+b).numpy(), nb+nb)
+    np.testing.assert_equal((a + 1).numpy(), na + 1)
+    np.testing.assert_equal((b + 1).numpy(), nb + 1)
+    np.testing.assert_equal((1 + a).numpy(), 1 + na)
+    np.testing.assert_equal((1 + b).numpy(), 1 + nb)
+    np.testing.assert_equal((a + a).numpy(), na + na)
+    np.testing.assert_equal((b + b).numpy(), nb + nb)
 
   def test_add_two_partitions(self):
     t = Tensor.arange(64).reshape(8, 8).contiguous().realize()
@@ -520,12 +575,12 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
     for i in range(len(devices)):
       to_add.append((Tensor.ones(2, 8) * i).shard(devices))
 
-    added:List[Tensor] = []
+    added: List[Tensor] = []
     for bound, a in zip(x.lazydata.bounds, to_add):
-      added.append(x[bound[0]:bound[1]] + a)
+      added.append(x[bound[0] : bound[1]] + a)
 
     output = added[0].cat(*added[1:])
-    expected = np.arange(64).reshape((8,8)) + np.array([[0,0,1,1,2,2,3,3] for _ in range(8)]).T
+    expected = np.arange(64).reshape((8, 8)) + np.array([[0, 0, 1, 1, 2, 2, 3, 3] for _ in range(8)]).T
     np.testing.assert_allclose(output.numpy(), expected)
 
   def test_unsynced_backprop_conv_bn(self):
@@ -555,16 +610,17 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
 
   def test_unsynced_backprop_standalone_bn(self):
     from extra.lr_scheduler import OneCycleLR
+
     GPUS = (d1, d2)
 
     class BatchNorm:
       def __init__(self, num_features):
-        self.bns:List[nn.BatchNorm2d] = []
+        self.bns: List[nn.BatchNorm2d] = []
         for _ in GPUS:
           bn = nn.BatchNorm2d(num_features, track_running_stats=False, eps=1e-12, momentum=0.85, affine=True)
           self.bns.append(bn)
 
-      def __call__(self, x:Tensor):
+      def __call__(self, x: Tensor):
         bn_ts = []
         for bound, bn in zip(x.lazydata.bounds, self.bns):
           xi = x.shrink((bound, None, None, None))
@@ -592,6 +648,7 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
   def test_unsynced_backprop_sync_weights(self):
     from extra.lr_scheduler import OneCycleLR
     from examples.hlb_cifar10 import UnsyncedBatchNorm
+
     GPUS = (d1, d2)
 
     with Tensor.train():
@@ -599,7 +656,7 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
       bn = UnsyncedBatchNorm(16, num_devices=len(GPUS))
 
       for k, p in get_state_dict([conv, bn]).items():
-        if 'running_mean' in k or 'running_var' in k:
+        if "running_mean" in k or "running_var" in k:
           p.shard_(GPUS, axis=0)
         else:
           p.to_(GPUS)
@@ -631,7 +688,7 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
 
       bn_ts = []
       for bound, bn in zip(x.lazydata.bounds, bns):
-        bni = bn(x[bound[0]:bound[1]])
+        bni = bn(x[bound[0] : bound[1]])
         bn_ts.append(bni)
 
       bn_ts[0].cat(*bn_ts[1:]).numpy()
@@ -639,6 +696,7 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
   def test_synced_vs_unsynced_bn(self):
     from examples.hlb_cifar10 import UnsyncedBatchNorm
     from tinygrad.nn import BatchNorm2d
+
     devices = [f"{Device.DEFAULT}:{i}" for i in range(4)]
     x = Tensor.ones(8, 8, 8, 8).contiguous().realize().shard(devices, axis=0)
 
@@ -649,7 +707,7 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
       for p in get_parameters(synced_bn):
         p.shard_(devices)
       for k, p in get_state_dict(unsynced_bn).items():
-        if 'running_mean' in k or 'running_var' in k:
+        if "running_mean" in k or "running_var" in k:
           p.shard_(devices, axis=0)
         else:
           p.to_(devices)
@@ -663,5 +721,6 @@ class TestShrinkMultiTensorShardedAxis(unittest.TestCase):
     assert synced_si
     assert unsynced_si
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

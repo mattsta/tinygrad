@@ -5,6 +5,7 @@ import torch
 from tinygrad import nn, dtypes, Tensor
 from functools import partial
 
+
 # https://gist.github.com/devries/11405101
 def ksprob(a):
   fac, total, termbf = 2.0, 0.0, 0.0
@@ -17,6 +18,7 @@ def ksprob(a):
     fac = -fac
     termbf = math.fabs(term)
   return 1.0
+
 
 def kstest(l1, l2):
   n1, n2 = len(l1), len(l2)
@@ -39,6 +41,7 @@ def kstest(l1, l2):
   prob = ksprob((nesq + 0.12 + 0.11 / nesq) * d)
   return prob
 
+
 def equal_distribution(tiny_func, torch_func=None, numpy_func=None, shape=(20, 23), alpha=0.05):
   Tensor.manual_seed(1337)
   torch.manual_seed(1337)
@@ -46,12 +49,18 @@ def equal_distribution(tiny_func, torch_func=None, numpy_func=None, shape=(20, 2
   assert not (torch_func is None and numpy_func is None), "no function to compare with"
   x1 = tiny_func(*shape).numpy().flatten()
   x2 = tiny_func(shape).numpy().flatten()
-  if numpy_func is not None: y = numpy_func(shape).flatten()
-  if torch_func is not None: z = torch_func(shape).numpy().flatten()
-  return (numpy_func is None or (kstest(x1, y) >= alpha and kstest(x2, y) >= alpha)) and \
-    (torch_func is None or (kstest(x1, z) >= alpha and kstest(x2, z) >= alpha))
+  if numpy_func is not None:
+    y = numpy_func(shape).flatten()
+  if torch_func is not None:
+    z = torch_func(shape).numpy().flatten()
+  return (numpy_func is None or (kstest(x1, y) >= alpha and kstest(x2, y) >= alpha)) and (
+    torch_func is None or (kstest(x1, z) >= alpha and kstest(x2, z) >= alpha)
+  )
 
-def normal_test(func, shape=(20, 23), alpha=0.05): return equal_distribution(func, numpy_func=lambda x: np.random.randn(*x), shape=shape, alpha=alpha)
+
+def normal_test(func, shape=(20, 23), alpha=0.05):
+  return equal_distribution(func, numpy_func=lambda x: np.random.randn(*x), shape=shape, alpha=alpha)
+
 
 class TestRandomness(unittest.TestCase):
   def test_rand(self):
@@ -74,28 +83,44 @@ class TestRandomness(unittest.TestCase):
   def test_randint(self):
     self.assertFalse(normal_test(Tensor.randint))
     self.assertTrue(equal_distribution(partial(Tensor.randint, low=-2, high=5), numpy_func=lambda x: np.random.randint(low=-2, high=5, size=x)))
-    self.assertTrue(Tensor.randint(1,device="CLANG").device=="CLANG")
+    self.assertTrue(Tensor.randint(1, device="CLANG").device == "CLANG")
 
   def test_normal(self):
     self.assertTrue(normal_test(Tensor.normal))
-    self.assertTrue(equal_distribution(Tensor.normal, lambda x: torch.nn.init.normal_(torch.empty(x), mean=0, std=1),
-                                                      lambda x: np.random.normal(loc=0, scale=1, size=x)))
+    self.assertTrue(
+      equal_distribution(
+        Tensor.normal, lambda x: torch.nn.init.normal_(torch.empty(x), mean=0, std=1), lambda x: np.random.normal(loc=0, scale=1, size=x)
+      )
+    )
 
   def test_uniform(self):
     self.assertFalse(normal_test(Tensor.uniform))
     self.assertTrue(equal_distribution(Tensor.uniform, lambda x: torch.nn.init.uniform_(torch.empty(x)), lambda x: np.random.uniform(size=x)))
-    self.assertTrue(equal_distribution(partial(Tensor.uniform, low=-100, high=100, dtype=dtypes.int32),
-                                       numpy_func=lambda x: np.random.randint(low=-100, high=100, size=x)))
+    self.assertTrue(
+      equal_distribution(
+        partial(Tensor.uniform, low=-100, high=100, dtype=dtypes.int32), numpy_func=lambda x: np.random.randint(low=-100, high=100, size=x)
+      )
+    )
 
   def test_scaled_uniform(self):
     self.assertFalse(normal_test(Tensor.scaled_uniform))
-    self.assertTrue(equal_distribution(Tensor.scaled_uniform, lambda x: torch.nn.init.uniform_(torch.empty(x), a=-1, b=1) / math.sqrt(math.prod(x)),
-                                                              lambda x: np.random.uniform(-1, 1, size=x) / math.sqrt(math.prod(x))))
+    self.assertTrue(
+      equal_distribution(
+        Tensor.scaled_uniform,
+        lambda x: torch.nn.init.uniform_(torch.empty(x), a=-1, b=1) / math.sqrt(math.prod(x)),
+        lambda x: np.random.uniform(-1, 1, size=x) / math.sqrt(math.prod(x)),
+      )
+    )
 
   def test_glorot_uniform(self):
     self.assertFalse(normal_test(Tensor.glorot_uniform))
-    self.assertTrue(equal_distribution(Tensor.glorot_uniform, lambda x: torch.nn.init.xavier_uniform_(torch.empty(x)),
-                                                              lambda x: np.random.uniform(-1, 1, size=x) * math.sqrt(6 / (x[0] + math.prod(x[1:])))))
+    self.assertTrue(
+      equal_distribution(
+        Tensor.glorot_uniform,
+        lambda x: torch.nn.init.xavier_uniform_(torch.empty(x)),
+        lambda x: np.random.uniform(-1, 1, size=x) * math.sqrt(6 / (x[0] + math.prod(x[1:]))),
+      )
+    )
 
   def test_kaiming_uniform(self):
     Tensor.manual_seed(1337)
@@ -114,6 +139,7 @@ class TestRandomness(unittest.TestCase):
   def test_multinomial(self):
     self.assertRaises(AssertionError, lambda: Tensor(2).multinomial(1, replacement=False))
     self.assertRaises(AssertionError, lambda: Tensor([1, 9]).multinomial(0, replacement=False))
+
     def _check_with_torch(w, num_samples, replacement):
       tiny_res = Tensor(w).multinomial(num_samples, replacement=replacement)
       torch_res = torch.tensor(w).multinomial(num_samples, replacement=replacement)
@@ -123,9 +149,10 @@ class TestRandomness(unittest.TestCase):
         torch_res = torch_res.unsqueeze(0)
       for i in range(torch_res.shape[0]):
         self.assertTrue(equal_distribution(lambda *_: tiny_res[i], lambda _: torch_res[i]))
-    _check_with_torch(w=[0.231, 0., 1., 0.5], num_samples=2000, replacement=True)
+
+    _check_with_torch(w=[0.231, 0.0, 1.0, 0.5], num_samples=2000, replacement=True)
     _check_with_torch(w=[[0.2, 0.8]], num_samples=2000, replacement=True)  # 2D but only 1 row
-    _check_with_torch(w=[[0.453, 0., 1., 0.81], [0.1, 0.8, 0., 0.1]], num_samples=2000, replacement=True)
+    _check_with_torch(w=[[0.453, 0.0, 1.0, 0.81], [0.1, 0.8, 0.0, 0.1]], num_samples=2000, replacement=True)
     # no-replacement isn't supported, unless taking only one sample
     w = [0.1, 0.9]
     self.assertRaises(AssertionError, lambda: Tensor(w).multinomial(100, replacement=False))
@@ -141,7 +168,7 @@ class TestRandomness(unittest.TestCase):
     self.assertFalse(equal_distribution(lambda *_: tiny_res, lambda _: torch_res))
 
   def test_conv2d_init(self):
-    params = (128, 256, (3,3))
+    params = (128, 256, (3, 3))
     assert equal_distribution(lambda *_: nn.Conv2d(*params).weight, lambda _: torch.nn.Conv2d(*params).weight.detach())
     assert equal_distribution(lambda *_: nn.Conv2d(*params).bias, lambda _: torch.nn.Conv2d(*params).bias.detach())
 
@@ -154,6 +181,7 @@ class TestRandomness(unittest.TestCase):
     params = (64,)
     assert equal_distribution(lambda *_: nn.BatchNorm2d(*params).weight, lambda _: torch.nn.BatchNorm2d(*params).weight.detach())
     assert equal_distribution(lambda *_: nn.BatchNorm2d(*params).bias, lambda _: torch.nn.BatchNorm2d(*params).bias.detach())
+
 
 if __name__ == "__main__":
   unittest.main()

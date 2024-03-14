@@ -3,6 +3,7 @@ from tinygrad import dtypes, Variable
 from tinygrad.ops import BinaryOps, TernaryOps
 from tinygrad.codegen.uops import UOpGraph, UOps
 
+
 class TestUOpGraph(unittest.TestCase):
   def test_add_constant_fold(self):
     g = UOpGraph()
@@ -16,7 +17,7 @@ class TestUOpGraph(unittest.TestCase):
 
   def test_where_same_fold(self):
     g = UOpGraph()
-    v = g.add(UOps.DEFINE_VAR, dtypes.int, arg=Variable('tmp', 0, 1))
+    v = g.add(UOps.DEFINE_VAR, dtypes.int, arg=Variable("tmp", 0, 1))
     c0 = g.add(UOps.CONST, dtypes.int, arg=0)
     vc = g.add(UOps.ALU, dtypes.bool, (v, c0), BinaryOps.CMPEQ)
     c1 = g.add(UOps.CONST, dtypes.float, arg=1.0)
@@ -46,5 +47,6 @@ class TestUOpGraph(unittest.TestCase):
     self.assertEqual(out.uop, UOps.CONST)
     self.assertEqual(out.arg, 0)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main(verbosity=2)

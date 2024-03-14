@@ -7,31 +7,39 @@ from tinygrad.codegen.kernel import LinearizerOptions
 from tinygrad.renderer.llvmir import uops_to_llvm_ir
 import llvmlite.binding as llvm
 
+
 class LLVMCompiler(Compiler):
   linearizer_opts = LinearizerOptions("LLVM", supports_float4=False, has_local=False, has_shared=False)
-  def __init__(self, device:LLVMDevice):
+
+  def __init__(self, device: LLVMDevice):
     self.device = device
     super().__init__("compile_llvm")
-  def render(self, name:str, uops) -> str: return uops_to_llvm_ir(name, uops)
-  def compile(self, src:str) -> bytes:
+
+  def render(self, name: str, uops) -> str:
+    return uops_to_llvm_ir(name, uops)
+
+  def compile(self, src: str) -> bytes:
     mod = llvm.parse_assembly(src)
     mod.verify()
     self.device.optimizer.run(mod)
-    if DEBUG >= 5: print(self.device.target_machine.emit_assembly(mod))
+    if DEBUG >= 5:
+      print(self.device.target_machine.emit_assembly(mod))
     return self.device.target_machine.emit_object(mod)
 
+
 class LLVMProgram:
-  def __init__(self, device:LLVMDevice, name:str, lib:bytes):
+  def __init__(self, device: LLVMDevice, name: str, lib: bytes):
     self.name, self.lib = name, lib
     device.engine.add_object_file(llvm.object_file.ObjectFileRef.from_data(lib))
     self.fxn = device.engine.get_function_address(name)
 
-  def __call__(self, *bufs, vals:Tuple[int, ...]=(), wait=False):
-    self.cfunc = ctypes.CFUNCTYPE(ctypes.c_int, *([ctypes.c_void_p]*len(bufs)), *([ctypes.c_int32]*len(vals)))(self.fxn)
+  def __call__(self, *bufs, vals: Tuple[int, ...] = (), wait=False):
+    self.cfunc = ctypes.CFUNCTYPE(ctypes.c_int, *([ctypes.c_void_p] * len(bufs)), *([ctypes.c_int32] * len(vals)))(self.fxn)
     return cpu_time_execution(lambda: self.cfunc(*bufs, *vals), enable=wait)
 
+
 class LLVMDevice(Compiled):
-  def __init__(self, device:str):
+  def __init__(self, device: str):
     llvm.initialize()
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()

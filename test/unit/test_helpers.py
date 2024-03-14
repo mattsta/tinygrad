@@ -5,11 +5,16 @@ from tinygrad.shape.symbolic import Variable, NumNode
 
 VARIABLE = ContextVar("VARIABLE", 0)
 
+
 class TestContextVars(unittest.TestCase):
   # Ensuring that the test does not modify variables outside the tests.
   ctx = Context()
-  def setUp(self): TestContextVars.ctx.__enter__()
-  def tearDown(self): TestContextVars.ctx.__exit__()
+
+  def setUp(self):
+    TestContextVars.ctx.__enter__()
+
+  def tearDown(self):
+    TestContextVars.ctx.__exit__()
 
   def test_initial_value_is_set(self):
     _TMP = ContextVar("_TMP", 5)
@@ -29,7 +34,7 @@ class TestContextVars(unittest.TestCase):
 
   def test_value_accross_modules(self):
     # Mocking module import by invoking the code but not in our globals().
-    exec('from tinygrad.helpers import ContextVar;C = ContextVar("C", 13)', {}) # pylint:disable=exec-used
+    exec('from tinygrad.helpers import ContextVar;C = ContextVar("C", 13)', {})  # pylint:disable=exec-used
     # It should not matter that the first creation was in another module.
     C = ContextVar("C", 0)
     self.assertEqual(C.value, 13)
@@ -40,7 +45,7 @@ class TestContextVars(unittest.TestCase):
     B.value = 2
     self.assertEqual(B.value, 2)
     # Assignment in another module.
-    exec('from tinygrad.helpers import ContextVar;B = ContextVar("B", 0);B.value = 3;', {}) # pylint:disable=exec-used
+    exec('from tinygrad.helpers import ContextVar;B = ContextVar("B", 0);B.value = 3;', {})  # pylint:disable=exec-used
     # Assignment in another module should affect this one as well.
     self.assertEqual(B.value, 3)
 
@@ -108,6 +113,7 @@ with Context(VARIABLE=1):
       ...
     assert D.value == 2, f"Expected D to be 2, but was {D.value}. Indicates that Context.__exit__ did not restore to the correct value."
 
+
 class TestMergeDicts(unittest.TestCase):
   def test_merge_dicts(self):
     a = {"a": 1, "b": 2}
@@ -120,39 +126,58 @@ class TestMergeDicts(unittest.TestCase):
     with self.assertRaises(AssertionError):
       merge_dicts([a, d])
 
+
 class TestStripParens(unittest.TestCase):
-  def test_simple(self): self.assertEqual("1+2", strip_parens("(1+2)"))
-  def test_nested(self): self.assertEqual("1+(2+3)", strip_parens("(1+(2+3))"))
-  def test_casted_no_strip(self): self.assertEqual("(int)(1+2)", strip_parens("(int)(1+2)"))
+  def test_simple(self):
+    self.assertEqual("1+2", strip_parens("(1+2)"))
+
+  def test_nested(self):
+    self.assertEqual("1+(2+3)", strip_parens("(1+(2+3))"))
+
+  def test_casted_no_strip(self):
+    self.assertEqual("(int)(1+2)", strip_parens("(int)(1+2)"))
+
 
 class TestProd(unittest.TestCase):
-  def test_empty(self): self.assertEqual(1, prod(tuple()))
-  def test_ints(self): self.assertEqual(30, prod((2, 3, 5)))
-  def test_variable(self): self.assertEqual("(a*12)", prod((Variable("a", 1, 5), 3, 4)).render())
-  def test_variable_order(self): self.assertEqual("(a*12)", prod((3, 4, Variable("a", 1, 5))).render())
-  def test_num_nodes(self): self.assertEqual(NumNode(6), prod((NumNode(2), NumNode(3))))
+  def test_empty(self):
+    self.assertEqual(1, prod(tuple()))
+
+  def test_ints(self):
+    self.assertEqual(30, prod((2, 3, 5)))
+
+  def test_variable(self):
+    self.assertEqual("(a*12)", prod((Variable("a", 1, 5), 3, 4)).render())
+
+  def test_variable_order(self):
+    self.assertEqual("(a*12)", prod((3, 4, Variable("a", 1, 5))).render())
+
+  def test_num_nodes(self):
+    self.assertEqual(NumNode(6), prod((NumNode(2), NumNode(3))))
+
 
 class TestRoundUp(unittest.TestCase):
   def test_round_up(self):
-    self.assertEqual(round_up(-3,4), 0)
-    self.assertEqual(round_up(-4,4), -4)
-    self.assertEqual(round_up(6,4), 8)
-    self.assertEqual(round_up(8,4), 8)
+    self.assertEqual(round_up(-3, 4), 0)
+    self.assertEqual(round_up(-4, 4), -4)
+    self.assertEqual(round_up(6, 4), 8)
+    self.assertEqual(round_up(8, 4), 8)
     self.assertEqual(round_up(232, 24984), 24984)
     self.assertEqual(round_up(24984, 232), 25056)
 
+
 class TestFetch(unittest.TestCase):
   def test_fetch_bad_http(self):
-    self.assertRaises(Exception, fetch, 'http://www.google.com/404')
+    self.assertRaises(Exception, fetch, "http://www.google.com/404")
 
   def test_fetch_small(self):
-    assert(len(fetch('https://google.com', allow_caching=False).read_bytes())>0)
+    assert len(fetch("https://google.com", allow_caching=False).read_bytes()) > 0
 
   @unittest.skip("test is flaky")
   def test_fetch_img(self):
     img = fetch("https://media.istockphoto.com/photos/hen-picture-id831791190", allow_caching=False)
     with Image.open(img) as pimg:
       assert pimg.size == (705, 1024)
+
 
 class TestFullyFlatten(unittest.TestCase):
   def test_fully_flatten(self):
@@ -163,82 +188,85 @@ class TestFullyFlatten(unittest.TestCase):
     self.assertEqual(fully_flatten([[1, 2, [3, 4]], [5, 6], 7]), [1, 2, 3, 4, 5, 6, 7])
     self.assertEqual(fully_flatten([[1, "ab"], [True, None], [3.14, [5, "b"]]]), [1, "ab", True, None, 3.14, 5, "b"])
 
+
 class TestMemoryview(unittest.TestCase):
   def test_from_mv_to_mv(self):
-    base = memoryview(bytearray(b"\x11\x22\x33"*40))
+    base = memoryview(bytearray(b"\x11\x22\x33" * 40))
     ct = from_mv(base)
     mv = to_mv(ct, len(base))
     mv[0] = 2
     assert base[0] == 2
 
+
 class TestGetContraction(unittest.TestCase):
   def test_contraction(self):
-    r = get_contraction((1,2,3,4), (2,3,4))
+    r = get_contraction((1, 2, 3, 4), (2, 3, 4))
     self.assertEqual(r, [[0, 1], [2], [3]])
 
-    r = get_contraction((2,1,3,4), (2,3,4))
+    r = get_contraction((2, 1, 3, 4), (2, 3, 4))
     self.assertEqual(r, [[0], [1, 2], [3]])
 
-    r = get_contraction((1,2,3,1,4), (1,2,3,4))
+    r = get_contraction((1, 2, 3, 1, 4), (1, 2, 3, 4))
     self.assertEqual(r, [[], [0, 1], [2], [3, 4]])
 
-    r = get_contraction((1,2,3,1,4,1,1), (2,3,4))
+    r = get_contraction((1, 2, 3, 1, 4, 1, 1), (2, 3, 4))
     self.assertEqual(r, [[0, 1], [2], [3, 4, 5, 6]])
 
-    r = get_contraction((1,2,3,4), (1,2,3*4))
+    r = get_contraction((1, 2, 3, 4), (1, 2, 3 * 4))
     self.assertEqual(r, [[], [0, 1], [2, 3]])
 
-    r = get_contraction((1,2,3,4), (2,1,3,4))
+    r = get_contraction((1, 2, 3, 4), (2, 1, 3, 4))
     self.assertEqual(r, [[0, 1], [], [2], [3]])
 
-    r = get_contraction((1,2,3,4), (1,1,2*3*4,1))
-    self.assertEqual(r, [[], [], [0,1,2,3], []])
+    r = get_contraction((1, 2, 3, 4), (1, 1, 2 * 3 * 4, 1))
+    self.assertEqual(r, [[], [], [0, 1, 2, 3], []])
 
-    r = get_contraction((2,1,3,4), (1,2,3,4))
+    r = get_contraction((2, 1, 3, 4), (1, 2, 3, 4))
     self.assertEqual(r, [[], [0], [1, 2], [3]])
 
-    r = get_contraction((1,2,3,4), (2*3*4,1,1,1))
+    r = get_contraction((1, 2, 3, 4), (2 * 3 * 4, 1, 1, 1))
     self.assertEqual(r, [[0, 1, 2, 3], [], [], []])
 
-    r = get_contraction((4,4,4,4), (16,1,16))
+    r = get_contraction((4, 4, 4, 4), (16, 1, 16))
     self.assertEqual(r, [[0, 1], [], [2, 3]])
 
-    r = get_contraction((1,2,3,4,1,1,1), (2,3,4))
+    r = get_contraction((1, 2, 3, 4, 1, 1, 1), (2, 3, 4))
     self.assertEqual(r, [[0, 1], [2], [3, 4, 5, 6]])
 
-    r = get_contraction((1,2,3,4), (1,2,3,4,1))
+    r = get_contraction((1, 2, 3, 4), (1, 2, 3, 4, 1))
     self.assertEqual(r, [[], [0, 1], [2], [3], []])
 
-    r = get_contraction((14,1,384,14,1,1,1,1), (1,14,384,14))
-    self.assertEqual(r, [[], [0], [1,2], [3,4,5,6,7]])
+    r = get_contraction((14, 1, 384, 14, 1, 1, 1, 1), (1, 14, 384, 14))
+    self.assertEqual(r, [[], [0], [1, 2], [3, 4, 5, 6, 7]])
 
-    r = get_contraction((14,1,384,1,14,1,1,1,1), (1,14,384,14))
-    self.assertEqual(r, [[], [0], [1,2], [3,4,5,6,7,8]])
+    r = get_contraction((14, 1, 384, 1, 14, 1, 1, 1, 1), (1, 14, 384, 14))
+    self.assertEqual(r, [[], [0], [1, 2], [3, 4, 5, 6, 7, 8]])
 
     r = get_contraction((512, 512), (1, 1, 512, 1, 1, 1, 1, 512))
     self.assertEqual(r, [[], [], [0], [], [], [], [], [1]])
 
-    r = get_contraction((1,2,3,4), (1,2,6,2))
+    r = get_contraction((1, 2, 3, 4), (1, 2, 6, 2))
     self.assertEqual(r, None)
 
   def test_contraction_ones(self):
-    r = get_contraction((1,), (1,1,1))
+    r = get_contraction((1,), (1, 1, 1))
     self.assertEqual(r, [[], [], [0]])
 
-    r = get_contraction((1,1), (1,1,1))
+    r = get_contraction((1, 1), (1, 1, 1))
     self.assertEqual(r, [[], [], [0, 1]])
 
-    r = get_contraction((1,1,1,1), (1,))
-    self.assertEqual(r, [[0,1,2,3]])
+    r = get_contraction((1, 1, 1, 1), (1,))
+    self.assertEqual(r, [[0, 1, 2, 3]])
 
-    r = get_contraction((1,1,1,1), (1,1))
-    self.assertEqual(r, [[], [0,1,2,3]])
+    r = get_contraction((1, 1, 1, 1), (1, 1))
+    self.assertEqual(r, [[], [0, 1, 2, 3]])
 
-    r = get_contraction((1,1,1,1), (1,1,1))
-    self.assertEqual(r, [[], [], [0,1,2,3]])
+    r = get_contraction((1, 1, 1, 1), (1, 1, 1))
+    self.assertEqual(r, [[], [], [0, 1, 2, 3]])
 
-    r = get_contraction((1,1,1,1), (1,1,1,1))
-    self.assertEqual(r, [[], [], [], [0,1,2,3]])
+    r = get_contraction((1, 1, 1, 1), (1, 1, 1, 1))
+    self.assertEqual(r, [[], [], [], [0, 1, 2, 3]])
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

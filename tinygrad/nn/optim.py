@@ -3,26 +3,31 @@ from typing import List
 from tinygrad.helpers import dedup, getenv
 from tinygrad.tensor import Tensor
 
+
 class Optimizer:
   def __init__(self, params: List[Tensor], lr: float):
     # if it's None, but being put into an optimizer, set it to True
     for x in params:
-      if x.requires_grad is None: x.requires_grad = True
+      if x.requires_grad is None:
+        x.requires_grad = True
 
     self.params: List[Tensor] = dedup([x for x in params if x.requires_grad])
     assert len(self.params) != 0, "optimizer must have at least one param"
     self.device = self.params[0].device
-    self.buffers: List[Tensor] = dedup([x for x in params if not x.requires_grad])   # buffers are still realized
+    self.buffers: List[Tensor] = dedup([x for x in params if not x.requires_grad])  # buffers are still realized
     self.lr = lr if getenv("CONST_LR") else Tensor([lr], requires_grad=False, device=self.device).contiguous()
 
   def zero_grad(self):
-    for param in self.params: param.grad = None
+    for param in self.params:
+      param.grad = None
 
   def realize(self, extra=None):
     # NOTE: in extra is too late for most of the params due to issues with assign
     Tensor.corealize(extra + self.params + self.buffers if extra is not None else self.params + self.buffers)
 
-  def step(self) -> None: raise NotImplementedError
+  def step(self) -> None:
+    raise NotImplementedError
+
 
 class SGD(Optimizer):
   def __init__(self, params: List[Tensor], lr=0.001, momentum=0, weight_decay=0.0, nesterov=False):
@@ -44,9 +49,15 @@ class SGD(Optimizer):
       t.assign(t.detach() - g * self.lr)
     self.realize(self.b)
 
+
 # LAMB is essentially just the trust ratio part of LARS applied to Adam/W so if we just set the trust ratio to 1.0 its just Adam/W.
-def AdamW(params: List[Tensor], lr=0.001, b1=0.9, b2=0.999, eps=1e-8, wd=0.01): return LAMB(params, lr, b1, b2, eps, wd, adam=True)
-def Adam(params: List[Tensor], lr=0.001, b1=0.9, b2=0.999, eps=1e-8): return LAMB(params, lr, b1, b2, eps, 0.0, adam=True)
+def AdamW(params: List[Tensor], lr=0.001, b1=0.9, b2=0.999, eps=1e-8, wd=0.01):
+  return LAMB(params, lr, b1, b2, eps, wd, adam=True)
+
+
+def Adam(params: List[Tensor], lr=0.001, b1=0.9, b2=0.999, eps=1e-8):
+  return LAMB(params, lr, b1, b2, eps, 0.0, adam=True)
+
 
 class LAMB(Optimizer):
   def __init__(self, params: List[Tensor], lr=0.001, b1=0.9, b2=0.999, eps=1e-6, wd=0.0, adam=False):

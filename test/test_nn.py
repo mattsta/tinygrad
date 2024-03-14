@@ -4,7 +4,20 @@ import numpy as np
 import torch
 from tinygrad import Tensor, Device, TinyJit
 from tinygrad.helpers import CI, Context
-from tinygrad.nn import BatchNorm2d, Conv1d,ConvTranspose1d, Conv2d,ConvTranspose2d, Linear, GroupNorm, LayerNorm,LayerNorm2d, Embedding, InstanceNorm
+from tinygrad.nn import (
+  BatchNorm2d,
+  Conv1d,
+  ConvTranspose1d,
+  Conv2d,
+  ConvTranspose2d,
+  Linear,
+  GroupNorm,
+  LayerNorm,
+  LayerNorm2d,
+  Embedding,
+  InstanceNorm,
+)
+
 
 @unittest.skipIf(CI and Device.DEFAULT == "CUDA", "slow")
 class TestNN(unittest.TestCase):
@@ -19,7 +32,7 @@ class TestNN(unittest.TestCase):
     for smoothing in [0.0, 0.1, 0.5, 1.0]:
       for ignore_index in [-1, 0, 2]:
         loss = input.sparse_categorical_crossentropy(target, label_smoothing=smoothing, ignore_index=ignore_index)
-        torch_loss = torch.nn.CrossEntropyLoss(reduction='mean', label_smoothing=smoothing, ignore_index=ignore_index)(torch_input, torch_target)
+        torch_loss = torch.nn.CrossEntropyLoss(reduction="mean", label_smoothing=smoothing, ignore_index=ignore_index)(torch_input, torch_target)
         np.testing.assert_allclose(loss.numpy(), torch_loss.detach().numpy(), atol=1e-5, rtol=1e-6)
 
   def test_batchnorm2d(self, training=False):
@@ -70,10 +83,8 @@ class TestNN(unittest.TestCase):
     bias = Tensor.randn(2, 3)
     mean = Tensor.randn(2, 3)
     invstd = Tensor.randn(2, 3)
-    a = (x.batchnorm(weight, bias, mean, invstd, axis=(0, 2))
-         .permute(1, 0, 2, 3, 4).reshape(4, 6, 2, 2))
-    b = (x.permute(1, 0, 2, 3, 4).reshape(4, 6, 2, 2)
-         .batchnorm(weight.flatten(), bias.flatten(), mean.flatten(), invstd.flatten()))
+    a = x.batchnorm(weight, bias, mean, invstd, axis=(0, 2)).permute(1, 0, 2, 3, 4).reshape(4, 6, 2, 2)
+    b = x.permute(1, 0, 2, 3, 4).reshape(4, 6, 2, 2).batchnorm(weight.flatten(), bias.flatten(), mean.flatten(), invstd.flatten())
     t_x = torch.tensor(x.permute(1, 0, 2, 3, 4).reshape(4, 6, 2, 2).numpy())
     t_weight, t_bias = torch.tensor(weight.flatten().numpy()), torch.tensor(bias.flatten().numpy())
     t_mean, t_invstd = torch.tensor(mean.flatten().numpy()), torch.tensor(invstd.flatten().numpy())
@@ -100,10 +111,10 @@ class TestNN(unittest.TestCase):
 
     BS, T, in_dim, out_dim = 4, 2, 8, 16
     _test_linear(Tensor.randn(BS, in_dim), in_dim, out_dim)
-    _test_linear(Tensor.randn(BS, T, in_dim), in_dim, out_dim) # test with more dims
+    _test_linear(Tensor.randn(BS, T, in_dim), in_dim, out_dim)  # test with more dims
 
   def test_conv1d(self):
-    BS, C1, W = 4, 16, 224//4
+    BS, C1, W = 4, 16, 224 // 4
     C2, K, S, P = 64, 7, 2, 1
 
     # create in tinygrad
@@ -123,7 +134,7 @@ class TestNN(unittest.TestCase):
     np.testing.assert_allclose(z.numpy(), torch_z.detach().numpy(), atol=5e-4, rtol=1e-5)
 
   def test_conv2d(self):
-    BS, C1, H, W = 4, 16, 224//4, 224//4
+    BS, C1, H, W = 4, 16, 224 // 4, 224 // 4
     C2, K, S, P = 64, 7, 2, 1
 
     # create in tinygrad
@@ -178,10 +189,9 @@ class TestNN(unittest.TestCase):
     np.testing.assert_allclose(gb.numpy(), torch_layer.bias.grad.numpy(), atol=5e-4, rtol=1e-5)
     np.testing.assert_allclose(gx.numpy(), torch_x.grad.numpy(), atol=5e-4, rtol=1e-5)
 
-
   @unittest.skipIf(CI and Device.DEFAULT == "WEBGPU", "runs out of memory in CI")
   def test_conv_transpose1d(self):
-    BS, C1, W = 4, 16, 224//4
+    BS, C1, W = 4, 16, 224 // 4
     C2, K, S, P = 64, 7, 2, 1
 
     # create in tinygrad
@@ -202,7 +212,7 @@ class TestNN(unittest.TestCase):
 
   @unittest.skipIf(CI and Device.DEFAULT == "WEBGPU", "runs out of memory in CI")
   def test_conv_transpose2d(self):
-    BS, C1, H, W = 4, 16, 224//4, 224//4
+    BS, C1, H, W = 4, 16, 224 // 4, 224 // 4
     C2, K, S, P = 64, 7, 2, 1
 
     # create in tinygrad
@@ -275,7 +285,7 @@ class TestNN(unittest.TestCase):
     x = Tensor.randn(N, C, H, W)
     z = layer(x)
     torch_x = torch.tensor(x.numpy())
-    torch_z = torch_layer(torch_x.permute(0,2,3,1)).permute(0,3,1,2)
+    torch_z = torch_layer(torch_x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
     np.testing.assert_allclose(z.numpy(), torch_z.detach().numpy(), atol=5e-3, rtol=5e-3)
 
   def test_instancenorm_2d(self):
@@ -353,5 +363,5 @@ class TestNN(unittest.TestCase):
       np.testing.assert_allclose(z.numpy(), torch_z.detach().numpy(), atol=1e-8, rtol=1e-8)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   unittest.main()

@@ -12,38 +12,46 @@ from tinygrad.features.graph import print_tree, realized_lazybuffer
 from tinygrad.realize import create_schedule
 from tinygrad import nn, dtypes
 
-def check_schedule(t:Tensor, allowed:int, to_prerealize:Optional[List[Tensor]]=None, filter_loadops=True):
+
+def check_schedule(t: Tensor, allowed: int, to_prerealize: Optional[List[Tensor]] = None, filter_loadops=True):
   seen = set()
   if to_prerealize:
     for pre in to_prerealize:
       for s in create_schedule([pre.lazydata], seen.copy()):
-        for i,out in enumerate(s.outputs):
-          if GRAPH: realized_lazybuffer(out, 0)
+        for i, out in enumerate(s.outputs):
+          if GRAPH:
+            realized_lazybuffer(out, 0)
           seen.add(out)
   sched = create_schedule([t.lazydata], seen)
   if GRAPH:
-    for i,s in enumerate(sched):
-      for out in s.outputs: realized_lazybuffer(out, i+1)
-  if filter_loadops: sched = [s for s in sched if s.ast[0].op not in LoadOps]
-  if len(sched) != allowed: print(f"SCHEDULE ISSUE, expecting {allowed} got {len(sched)}")
+    for i, s in enumerate(sched):
+      for out in s.outputs:
+        realized_lazybuffer(out, i + 1)
+  if filter_loadops:
+    sched = [s for s in sched if s.ast[0].op not in LoadOps]
+  if len(sched) != allowed:
+    print(f"SCHEDULE ISSUE, expecting {allowed} got {len(sched)}")
   if len(sched) != allowed or DEBUG >= 3:
     for i, s in enumerate(sched):
-      print("kernel", i+1)
-      for op in s.ast: print_tree(op)
+      print("kernel", i + 1)
+      for op in s.ast:
+        print_tree(op)
   assert len(sched) == allowed
   # test the (non loadops) ops linearize
   for s in sched:
-    if s.ast[0].op in LoadOps: continue
+    if s.ast[0].op in LoadOps:
+      continue
     l = Linearizer(*s.ast)
     l.hand_coded_optimizations()
     l.linearize()
+
 
 class TestSchedule(unittest.TestCase):
   def test_basic_binop_fusion(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
     c = Tensor.empty(10)
-    d = a+b+c
+    d = a + b + c
     check_schedule(d, 1)
 
   def test_basic_binop_fusion_deep(self):
@@ -51,37 +59,37 @@ class TestSchedule(unittest.TestCase):
     b = Tensor.empty(10)
     c = Tensor.empty(10)
     d = Tensor.empty(10)
-    e = a+b+c+d
+    e = a + b + c + d
     check_schedule(e, 1)
 
   def test_mulacc_fusion(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
-    c = (a*b).sum()
+    c = (a * b).sum()
     check_schedule(c, 1)
 
   def test_mulacc_relu_fusion(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
-    c = (a*b).sum().relu()
+    c = (a * b).sum().relu()
     check_schedule(c, 1)
 
   def test_binop_reshape_fusion(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
-    c = Tensor.empty(5,2)
-    d = (a+b).reshape(5,2)+c
+    c = Tensor.empty(5, 2)
+    d = (a + b).reshape(5, 2) + c
     check_schedule(d, 1)
 
   def test_binop_permute_fusion(self):
-    a = Tensor.empty(2,5)
-    b = Tensor.empty(2,5)
-    c = Tensor.empty(5,2)
-    d = (a+b).permute(1,0)+c
+    a = Tensor.empty(2, 5)
+    b = Tensor.empty(2, 5)
+    c = Tensor.empty(5, 2)
+    d = (a + b).permute(1, 0) + c
     check_schedule(d, 1)
 
   def test_constants_are_embedded(self):
-    a = Tensor.empty(3,3) * 2
+    a = Tensor.empty(3, 3) * 2
     check_schedule(a, 2, filter_loadops=False)
 
   def test_binop_elu_fusion(self):
@@ -92,27 +100,27 @@ class TestSchedule(unittest.TestCase):
   def test_binop_reshape_reduce_fusion(self):
     a = Tensor.empty(100)
     b = Tensor.empty(100)
-    c = (a+b).reshape(10, 10).sum(axis=0, keepdim=True)
+    c = (a + b).reshape(10, 10).sum(axis=0, keepdim=True)
     check_schedule(c, 1)
 
   def test_reduce_reshape_binop_fusion(self):
-    a = Tensor.empty(10,10)
+    a = Tensor.empty(10, 10)
     b = Tensor.empty(10)
     c = a.sum(axis=0) + b
     check_schedule(c, 1)
 
   @unittest.skip("not pushing permutes through reduces")
   def test_reduce_permute_binop_fusion(self):
-    a = Tensor.empty(10,10,10)
-    b = Tensor.empty(10,10,1)
-    c = a.sum(axis=0, keepdim=True).permute(2,1,0) + b
+    a = Tensor.empty(10, 10, 10)
+    b = Tensor.empty(10, 10, 1)
+    c = a.sum(axis=0, keepdim=True).permute(2, 1, 0) + b
     check_schedule(c, 1)
 
   def test_binop_early_reshape_reduce_fusion(self):
     a = Tensor.empty(100)
     b = Tensor.empty(100)
-    c = Tensor.empty(10,10)
-    d = ((a+b).reshape(10,10) + c).sum(axis=0)
+    c = Tensor.empty(10, 10)
+    d = ((a + b).reshape(10, 10) + c).sum(axis=0)
     check_schedule(d, 1)
 
   def test_diamond_folded(self):
@@ -120,38 +128,38 @@ class TestSchedule(unittest.TestCase):
     b = Tensor.empty(10)
     c = Tensor.empty(10)
     d = Tensor.empty(10)
-    ab = a+b
-    e = (ab+c) + (ab+d)
+    ab = a + b
+    e = (ab + c) + (ab + d)
     check_schedule(e, 1)
 
   def test_cache_binaryop(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
-    c = a+b
-    d = a+b
+    c = a + b
+    d = a + b
     check_schedule(d, 0, [c])
 
   @unittest.skip("failing in old lazy")
   def test_cache_binaryop_reshaped(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
-    c = a+b
-    d = a.reshape(10,1)+b.reshape(10,1)
+    c = a + b
+    d = a.reshape(10, 1) + b.reshape(10, 1)
     check_schedule(d, 0, [c])
 
   @unittest.skip("failing in new lazy")
   def test_cache_binaryop_transpose(self):
-    a = Tensor.empty(10,10)
-    b = Tensor.empty(10,10)
-    c = (a.T*b.T).T #.contiguous()
-    d = a*b
+    a = Tensor.empty(10, 10)
+    b = Tensor.empty(10, 10)
+    c = (a.T * b.T).T  # .contiguous()
+    d = a * b
     check_schedule(d, 0, [c])
 
   def test_cache_two_reduceops(self):
     a = Tensor.empty(10)
     b = a.sum()
     c = a.sum()
-    bc = b+c
+    bc = b + c
     check_schedule(bc, 1)
 
   def test_fold_double_unary(self):
@@ -159,70 +167,70 @@ class TestSchedule(unittest.TestCase):
     out = y.sum(keepdim=True).sqrt().__neg__()
     check_schedule(out, 1)
 
-  #@unittest.skip("may want to reconsider this")
+  # @unittest.skip("may want to reconsider this")
   def test_fold_batchnorm(self):
     with Tensor.train():
-      img = Tensor.empty(1,32,4,4)
+      img = Tensor.empty(1, 32, 4, 4)
       bn = nn.BatchNorm2d(32, track_running_stats=False)
       out = bn(img)
       check_schedule(out, 3)
 
   def test_fold_conv_relu(self):
-    c1 = nn.Conv2d(3,16,3)
+    c1 = nn.Conv2d(3, 16, 3)
 
     # run
-    img = Tensor.ones(2,3,64,64)
+    img = Tensor.ones(2, 3, 64, 64)
     out = c1(img).relu()
     check_schedule(out, 1, [c1.weight, c1.bias])
 
   def test_fold_conv_elu(self):
-    c1 = nn.Conv2d(3,16,3)
+    c1 = nn.Conv2d(3, 16, 3)
 
     # run
-    img = Tensor.rand(2,3,64,64)
+    img = Tensor.rand(2, 3, 64, 64)
     out = c1(img).elu()
     check_schedule(out, 1, [c1.weight, c1.bias])
 
   def test_two_sum(self):
-    img = Tensor.empty(64,64)
-    x = (img.sum(0) + img.sum(1))
+    img = Tensor.empty(64, 64)
+    x = img.sum(0) + img.sum(1)
     out = x.relu()
-    del x    # is 3 without this
+    del x  # is 3 without this
     check_schedule(out, 2)
 
-  #@unittest.skip("failing in old lazy")
+  # @unittest.skip("failing in old lazy")
   def test_push_permute_through_reshape(self):
-    a = Tensor.empty(16,16)
-    b = Tensor.empty(16,16)
-    c = (a+b).reshape(4,4,4,4).permute(2,3,0,1).contiguous()
+    a = Tensor.empty(16, 16)
+    b = Tensor.empty(16, 16)
+    c = (a + b).reshape(4, 4, 4, 4).permute(2, 3, 0, 1).contiguous()
     check_schedule(c, 1)
 
-  #@unittest.skip("failing in old lazy")
+  # @unittest.skip("failing in old lazy")
   def test_push_permute_through_reshape_alt(self):
-    a = Tensor.empty(4,4,4,4)
-    b = Tensor.empty(4,4,4,4)
-    c = (a+b).reshape(16,16).permute(1,0).contiguous()
+    a = Tensor.empty(4, 4, 4, 4)
+    b = Tensor.empty(4, 4, 4, 4)
+    c = (a + b).reshape(16, 16).permute(1, 0).contiguous()
     check_schedule(c, 1)
 
   def test_no_binop_rerun(self):
     a = Tensor.empty(16)
     b = Tensor.empty(16)
-    c = a+b
-    d = (a+b).reshape(16,1)
+    c = a + b
+    d = (a + b).reshape(16, 1)
     check_schedule(d, 0, [c])
 
   def test_multi_permute_should_collapse(self):
-    a = Tensor.empty(4,4,4,4)
+    a = Tensor.empty(4, 4, 4, 4)
     b = Tensor.empty(16)
-    c = a.sum((0,1)).cast(dtypes.float16).permute(1,0).reshape(4,4,1).permute(1,0,2).reshape(16) + b
+    c = a.sum((0, 1)).cast(dtypes.float16).permute(1, 0).reshape(4, 4, 1).permute(1, 0, 2).reshape(16) + b
     check_schedule(c, 1)
 
   @unittest.skip("failing in old lazy")
   def test_fancy_reshape_fusion(self):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
-    c = a+b
-    d = a.reshape(10,1)+b.reshape(10,1)
+    c = a + b
+    d = a.reshape(10, 1) + b.reshape(10, 1)
     out = c.sum() + d.sum()
     check_schedule(out, 1)
 
@@ -231,9 +239,9 @@ class TestSchedule(unittest.TestCase):
   def test_children_dont_push(self):
     a = Tensor.empty(10, 10, 1)
     b = Tensor.empty(10, 10, 1)
-    d = (a+b).expand(10, 10, 10)
-    e = (a+b).permute(2,1,0)
-    f = d+e
+    d = (a + b).expand(10, 10, 10)
+    e = (a + b).permute(2, 1, 0)
+    f = d + e
     check_schedule(f, 2)
 
   @unittest.skip("failing in new lazy")
@@ -241,24 +249,24 @@ class TestSchedule(unittest.TestCase):
     a = Tensor.empty(10)
     b = Tensor.empty(10)
     c = Tensor.empty(10)
-    keep_me = a+b
-    e = keep_me.sum() # noqa: F841 give keep_me a child (NOTE: BinaryOps won't be a child since it will instant fuse)
-    d = keep_me+c
+    keep_me = a + b
+    e = keep_me.sum()  # noqa: F841 give keep_me a child (NOTE: BinaryOps won't be a child since it will instant fuse)
+    d = keep_me + c
     check_schedule(d, 2)
     check_schedule(keep_me, 0, [d])
 
-  #@unittest.skip("failing in old lazy")
+  # @unittest.skip("failing in old lazy")
   def test_permute_breaks_fusion(self):
     a = Tensor.empty(10, 10, 10)
     b = Tensor.empty(10, 10)
-    c = (a.sum(axis=2) + b).permute(1,0)
-    d = c.permute(1,0)
+    c = (a.sum(axis=2) + b).permute(1, 0)
+    d = c.permute(1, 0)
     check_schedule(d, 1)
 
   def test_some_permute_fusion(self):
     a = Tensor.empty(8192, 16)
     b = Tensor.empty(1, 16)
-    d = (a.T + b.expand(8192, 16).T)
+    d = a.T + b.expand(8192, 16).T
     c = a + b.expand(8192, 16)
     e = d.T
     check_schedule(c, 1)
@@ -284,6 +292,7 @@ class TestSchedule(unittest.TestCase):
   @unittest.skip("failing in old lazy")
   def test_image_conv_fusion(self):
     from tinygrad.features.image import image_conv2d
+
     w1 = Tensor.empty(16, 16, 1, 1)
     b1 = Tensor.empty(16)
     w2 = Tensor.empty(16, 16, 1, 1)
@@ -302,12 +311,14 @@ class TestSchedule(unittest.TestCase):
   def test_image_conv_fusion_minimal(self):
     b1 = Tensor.empty(16)
     b2 = Tensor.empty(16)
-    def p(x): return x.permute(1,0).contiguous().reshape(32,16,1).expand(32,16,16).sum(axis=2).permute(1,0)
+
+    def p(x):
+      return x.permute(1, 0).contiguous().reshape(32, 16, 1).expand(32, 16, 16).sum(axis=2).permute(1, 0)
 
     x = Tensor.empty(16, 32)
-    x = base = p(x) + b1.reshape(16,1)
+    x = base = p(x) + b1.reshape(16, 1)
     x = p(x)
-    x = x + b2.reshape(16,1)
+    x = x + b2.reshape(16, 1)
     x = x + base
     del base
     x = p(x)
@@ -315,10 +326,12 @@ class TestSchedule(unittest.TestCase):
 
   def test_image_conv_fusion_more_minimal(self):
     b1 = Tensor.empty(16)
-    def p(x): return x.permute(1,0).contiguous().reshape(32,16,1).expand(32,16,16).sum(axis=2).permute(1,0)
+
+    def p(x):
+      return x.permute(1, 0).contiguous().reshape(32, 16, 1).expand(32, 16, 16).sum(axis=2).permute(1, 0)
 
     x = Tensor.empty(16, 32)
-    x = base = p(x) + b1.reshape(16,1)
+    x = base = p(x) + b1.reshape(16, 1)
     x = p(x)
     del base
     check_schedule(x, 3)
@@ -345,22 +358,22 @@ class TestSchedule(unittest.TestCase):
 
   def test_contiguous_while_not_contiguous(self):
     x = Tensor.empty(1, 64, 32, 32)
-    out = x.permute(0,2,3,1).contiguous()
+    out = x.permute(0, 2, 3, 1).contiguous()
     check_schedule(out, 2, filter_loadops=False)
 
   def test_double_from(self):
-    x = Tensor([1,2,3,4])
-    out = x.to('ext')
+    x = Tensor([1, 2, 3, 4])
+    out = x.to("ext")
     check_schedule(out, 0, filter_loadops=False)
 
   def test_pow_const_tensor_simplified(self):
-    x = Tensor([1,2,3,4])
+    x = Tensor([1, 2, 3, 4])
     # NOTE: this does not test ** Tensor(2) is simpler in ast than ** Tensor(2.5)
     out = x ** Tensor(2)
     check_schedule(out, 1)
 
   def test_pow_const_tensor_to_zero(self):
-    x = Tensor([1,2,3,4])
+    x = Tensor([1, 2, 3, 4])
     out = x ** Tensor(0)
     # NOTE: this is ConstBuffer 0 + ConstBuffer 1
     check_schedule(out, 1)
@@ -373,7 +386,7 @@ class TestSchedule(unittest.TestCase):
   def test_reduce_permute_nofuse(self):
     x = Tensor.empty(32, 32, 32)
     y = Tensor.empty(32, 32)
-    out = x.sum(axis=2).T+y
+    out = x.sum(axis=2).T + y
     check_schedule(out, 2)
 
   def test_two_elus_sum(self):
@@ -406,7 +419,7 @@ class TestSchedule(unittest.TestCase):
     x = Tensor.empty(32)
     y = Tensor.empty(32)
     z = Tensor.empty(32)
-    out = (x+y).contiguous()+z
+    out = (x + y).contiguous() + z
     check_schedule(out, 2)
 
   def test_double_sum_ref(self):
@@ -429,5 +442,6 @@ class TestSchedule(unittest.TestCase):
     out = x.contiguous() + y.contiguous()
     check_schedule(out, 2)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -1,5 +1,6 @@
 from extra import dist
 from tinygrad.features.jit import TinyJit
+
 if __name__ == "__main__":
   dist.preinit()
 
@@ -8,12 +9,15 @@ from tinygrad.helpers import CI, getenv
 from tinygrad.tensor import Tensor
 import numpy as np
 
+
 @TinyJit
-def allreduce_jit(t:Tensor) -> Tensor:
+def allreduce_jit(t: Tensor) -> Tensor:
   return collectives.allreduce(t).realize()
+
 
 SIZE = 2048 if not CI else 2
 SIZE_2 = 255 if not CI else 3
+
 
 def run():
   # set a deterministic seed so that both ranks generate the same random tensor
@@ -40,12 +44,15 @@ def run():
 
   print(f"rank {rank} passed")
 
+
 if __name__ == "__main__":
   if getenv("HIP"):
     from tinygrad.runtime.ops_hip import HIP
+
     devices = [f"hip:{i}" for i in range(HIP.device_count)]
   else:
     from tinygrad.runtime.ops_gpu import CL
+
     devices = [f"gpu:{i}" for i in range(len(CL.devices))] if not CI else ["gpu:0", "gpu:0"]
   world_size = len(devices)
 
@@ -54,8 +61,10 @@ if __name__ == "__main__":
   processes = []
   for rank, device in enumerate(devices):
     processes.append(dist.spawn(rank, device, fn=run, args=()))
-  for p in processes: p.join()
+  for p in processes:
+    p.join()
 
   # exit with error code if any of the processes failed
   for p in processes:
-    if p.exitcode != 0: exit(p.exitcode)
+    if p.exitcode != 0:
+      exit(p.exitcode)

@@ -5,6 +5,7 @@ from tinygrad.ops import LoadOps
 from tinygrad.nn import Conv2d
 from tinygrad.realize import create_schedule
 
+
 class TestConvShapetracker(unittest.TestCase):
   def test_conv_3x3_one_view(self):
     conv = Conv2d(16, 32, (3, 3))
@@ -20,5 +21,6 @@ class TestConvShapetracker(unittest.TestCase):
       print(arg.st)
       assert len(arg.st.views) == 1
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

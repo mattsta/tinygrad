@@ -12,45 +12,65 @@ from tinygrad.shape.shapetracker import ShapeTracker
 
 # *** schedule running ***
 
+
 class CustomOp(JITRunner):
   def __init__(self, fxn):
     self.fxn = fxn
     super().__init__()
-  def __call__(self, rawbufs:List[Buffer], var_vals:Dict[Variable, int], wait=False, jit=False): self.fxn(*rawbufs)
+
+  def __call__(self, rawbufs: List[Buffer], var_vals: Dict[Variable, int], wait=False, jit=False):
+    self.fxn(*rawbufs)
+
 
 class SyncOp(JITRunner):
   def __init__(self, device):
     self.device, self.dname = Device[device], device
     super().__init__()
-  def __call__(self, rawbufs:List[Buffer], var_vals:Dict[Variable, int], wait=False, jit=False):
+
+  def __call__(self, rawbufs: List[Buffer], var_vals: Dict[Variable, int], wait=False, jit=False):
     et = cpu_time_execution(self.device.synchronize, enable=wait or DEBUG >= 1)
     update_stats(colored("synchronize", "RED"), 0, 0, {}, et, 1, device=self.dname)
 
-def lower_schedule_item(si:ScheduleItem) -> Optional[JITRunner]:
-  if si.ast[0].op not in {LoadOps.COPY, LoadOps.WAIT}: assert len(set(x.device for x in si.outputs+si.inputs)) == 1
-  if si.ast[0].op is BufferOps.STORE: return Device[si.outputs[0].device].get_runner(*si.ast)
+
+def lower_schedule_item(si: ScheduleItem) -> Optional[JITRunner]:
+  if si.ast[0].op not in {LoadOps.COPY, LoadOps.WAIT}:
+    assert len(set(x.device for x in si.outputs + si.inputs)) == 1
+  if si.ast[0].op is BufferOps.STORE:
+    return Device[si.outputs[0].device].get_runner(*si.ast)
   assert len(si.ast) == 1 and len(si.outputs) == 1, "only ASTRunner supports multioutput"
   out, ast = si.outputs[0], si.ast[0]
   if ast.op in {LoadOps.SYNC, LoadOps.WAIT, LoadOps.COPY} and out.device.startswith("HIP") and si.inputs[0].device.startswith("HIP"):
     from tinygrad.runtime.ops_hip import HIPSyncEvent, HIPWaitEvent
-    if ast.op is LoadOps.SYNC: return HIPSyncEvent(out)
-    if ast.op is LoadOps.WAIT: return HIPWaitEvent(out.device)
+
+    if ast.op is LoadOps.SYNC:
+      return HIPSyncEvent(out)
+    if ast.op is LoadOps.WAIT:
+      return HIPWaitEvent(out.device)
   if ast.op in {LoadOps.SYNC, LoadOps.WAIT} and out.device.startswith("HSA") and si.inputs[0].device.startswith("HSA"):
     # Our HSA runtime handles synchronization
-    if ast.op is LoadOps.SYNC: return None
+    if ast.op is LoadOps.SYNC:
+      return None
   if ast.op is LoadOps.COPY:
-    if hasattr(Device[out.device].allocator, 'transfer') and type(Device[out.device]) is type(Device[si.inputs[0].device]): return BufferXfer()
-    if si.inputs[0].device.startswith("DISK"): return BufferRead()
+    if hasattr(Device[out.device].allocator, "transfer") and type(Device[out.device]) is type(Device[si.inputs[0].device]):
+      return BufferXfer()
+    if si.inputs[0].device.startswith("DISK"):
+      return BufferRead()
     return BufferCopy()
-  if ast.op is LoadOps.CUSTOM: return CustomOp(ast.arg)
-  if ast.op is LoadOps.SYNC: return SyncOp(out.device) if isinstance(Device[out.device], Compiled) else None
+  if ast.op is LoadOps.CUSTOM:
+    return CustomOp(ast.arg)
+  if ast.op is LoadOps.SYNC:
+    return SyncOp(out.device) if isinstance(Device[out.device], Compiled) else None
   return None
 
+
 logops = open(getenv("LOGOPS", ""), "a") if getenv("LOGOPS", "") else None
-def run_schedule(schedule:List[ScheduleItem]):
+
+
+def run_schedule(schedule: List[ScheduleItem]):
   while len(schedule):
     si = schedule.pop(0)
-    if logops and si.ast[0].op not in LoadOps and not any(i.device.startswith("DISK:") for i in si.inputs): logops.write(str(si.ast)+"\n")
+    if logops and si.ast[0].op not in LoadOps and not any(i.device.startswith("DISK:") for i in si.inputs):
+      logops.write(str(si.ast) + "\n")
 
     # get the program
     prg = lower_schedule_item(si)
@@ -58,9 +78,9 @@ def run_schedule(schedule:List[ScheduleItem]):
     for out_op, out in zip(si.ast, si.outputs):
       # invalidate the output buffer if there's a non contig usage of it in inputs
       if out.output_buffer is not None:
-        for i,a in enumerate(si.inputs):
+        for i, a in enumerate(si.inputs):
           if a.realized == out.output_buffer:
-            if any(not x.arg.st.contiguous for x in out_op.lazyops if x.op is BufferOps.LOAD and x.arg.idx == i+1):
+            if any(not x.arg.st.contiguous for x in out_op.lazyops if x.op is BufferOps.LOAD and x.arg.idx == i + 1):
               out.output_buffer = None
               break
 
@@ -68,27 +88,37 @@ def run_schedule(schedule:List[ScheduleItem]):
       # we don't have an output buffer, we have to create it, and create to max size if it has symbolic shape
       if out.size > 0:
         options = BufferOptions(host=True, signal=True) if si.ast[0].op is LoadOps.SYNC else None
-        out.realized = out.output_buffer if out.output_buffer is not None else \
-          Buffer(out.device, out.size, out.dtype, "PLACEHOLDER" if getattr(prg, "skip_allocation", False) else None, options=options)
+        out.realized = (
+          out.output_buffer
+          if out.output_buffer is not None
+          else Buffer(out.device, out.size, out.dtype, "PLACEHOLDER" if getattr(prg, "skip_allocation", False) else None, options=options)
+        )
         del out.srcs
 
     # run the function (put it in JIT)
-    real_buffers = [x.realized for x in si.outputs+si.inputs if x.size != 0]
+    real_buffers = [x.realized for x in si.outputs + si.inputs if x.size != 0]
     assert all(x is not None for x in real_buffers), f"can't run, some inputs aren't realized {real_buffers}"
-    if prg: prg.exec(cast(List[Buffer], real_buffers), si.var_vals)
-    elif (out:=si.outputs[0]).size > 0: update_stats(colored(f"empty {out.st.size:10d} {out.dtype}", "yellow"), 0, 0, {}, None, 1, device=out.device)
+    if prg:
+      prg.exec(cast(List[Buffer], real_buffers), si.var_vals)
+    elif (out := si.outputs[0]).size > 0:
+      update_stats(colored(f"empty {out.st.size:10d} {out.dtype}", "yellow"), 0, 0, {}, None, 1, device=out.device)
     if GRAPH:
-      for out in si.outputs: realized_lazybuffer(out, GlobalCounters.kernel_count)
+      for out in si.outputs:
+        realized_lazybuffer(out, GlobalCounters.kernel_count)
+
 
 # *** schedule creation ***
 
 # creation can recurse a lot
 sys.setrecursionlimit(10000)
 
+
 # recursively create a lazyop
-def _recursive_lazyop(buf:LazyBuffer, inputs:List[LazyBuffer], var_vals:Dict[Variable, int], st:ShapeTracker,
-                      realizes:Set[LazyBuffer], cache, first=True) -> LazyOp:
-  if (buf, st) in cache: return cache[(buf, st)]
+def _recursive_lazyop(
+  buf: LazyBuffer, inputs: List[LazyBuffer], var_vals: Dict[Variable, int], st: ShapeTracker, realizes: Set[LazyBuffer], cache, first=True
+) -> LazyOp:
+  if (buf, st) in cache:
+    return cache[(buf, st)]
   if buf != buf.base:
     st = buf.st + st
     buf = buf.base
@@ -103,10 +133,11 @@ def _recursive_lazyop(buf:LazyBuffer, inputs:List[LazyBuffer], var_vals:Dict[Var
 
   # if we aren't fusing it, it's a load and we add it to the inputs
   if buf.realized or (buf in realizes and not first):
-    if buf not in inputs: inputs.append(buf)
+    if buf not in inputs:
+      inputs.append(buf)
     unbound_st, st_var_vals = st.simplify().unbind()
     var_vals.update(st_var_vals)
-    return LazyOp(BufferOps.LOAD, (), MemBuffer(inputs.index(buf)+1, buf.dtype, unbound_st))
+    return LazyOp(BufferOps.LOAD, (), MemBuffer(inputs.index(buf) + 1, buf.dtype, unbound_st))
 
   # if a CONTIGUOUS made it all the way here, just skip it
   if buf.op is LoadOps.CONTIGUOUS:
@@ -122,10 +153,13 @@ def _recursive_lazyop(buf:LazyBuffer, inputs:List[LazyBuffer], var_vals:Dict[Var
   cache[(buf, st)] = ret = LazyOp(buf.op, tuple(_recursive_lazyop(x, inputs, var_vals, st, realizes, cache, False) for x in buf.srcs), buf.arg)
   return ret
 
+
 # recursively walk back in the graph to create the schedule
-def _recursive_schedule(out:LazyBuffer, seen:Set[LazyBuffer], realizes:Set[LazyBuffer],
-                        reduce_for_op: Dict[LazyBuffer, LazyBuffer]) -> List[ScheduleItem]:
-  if out in seen or out.realized or out.op == LoadOps.CONST: return []
+def _recursive_schedule(
+  out: LazyBuffer, seen: Set[LazyBuffer], realizes: Set[LazyBuffer], reduce_for_op: Dict[LazyBuffer, LazyBuffer]
+) -> List[ScheduleItem]:
+  if out in seen or out.realized or out.op == LoadOps.CONST:
+    return []
   assert out.base == out
   seen.add(out)
 
@@ -136,31 +170,48 @@ def _recursive_schedule(out:LazyBuffer, seen:Set[LazyBuffer], realizes:Set[LazyB
   else:
     output_st = ShapeTracker.from_shape(reduce_for_op[out].shape if out in reduce_for_op else out.shape)
     op = _recursive_lazyop(out, inputs, var_vals, output_st, realizes, cache={})
-    op = LazyOp(BufferOps.STORE, (op, ), MemBuffer(0, out.dtype, output_st.simplify().unbind()[0]))
+    op = LazyOp(BufferOps.STORE, (op,), MemBuffer(0, out.dtype, output_st.simplify().unbind()[0]))
 
   return flatten(_recursive_schedule(x.base, seen, realizes, reduce_for_op) for x in inputs) + [ScheduleItem((op,), (out,), tuple(inputs), var_vals)]
 
+
 # recursively search the entire graph for all LazyBuffers, insert realizes after expands
-def _recurse_lb(buf:LazyBuffer, realizes:Set[LazyBuffer], allbufs:Dict[LazyBuffer, None],
-                simple_pads:Set[LazyBuffer], children:DefaultDict[LazyBuffer, Dict[LazyBuffer, None]], scheduled=False):
-  if buf in allbufs or buf.base.realized: return
-  if GRAPH: log_lazybuffer(buf, scheduled)
-  if isinstance(buf.dtype, ImageDType) and (prod(buf.shape) != prod(buf.dtype.shape) or
-                                            not any(buf.shape[x]%4 == 0 for x in buf.st.unit_stride_axes())):
-    if DEBUG >= 3: print(f"forcing image {buf.dtype} with shape {buf.shape} to float32")
+def _recurse_lb(
+  buf: LazyBuffer,
+  realizes: Set[LazyBuffer],
+  allbufs: Dict[LazyBuffer, None],
+  simple_pads: Set[LazyBuffer],
+  children: DefaultDict[LazyBuffer, Dict[LazyBuffer, None]],
+  scheduled=False,
+):
+  if buf in allbufs or buf.base.realized:
+    return
+  if GRAPH:
+    log_lazybuffer(buf, scheduled)
+  if isinstance(buf.dtype, ImageDType) and (
+    prod(buf.shape) != prod(buf.dtype.shape) or not any(buf.shape[x] % 4 == 0 for x in buf.st.unit_stride_axes())
+  ):
+    if DEBUG >= 3:
+      print(f"forcing image {buf.dtype} with shape {buf.shape} to float32")
     buf.dtype = dtypes.float32  # NOTE: this is what makes the dtype above not match
   if buf.base != buf:
     # realize all places where the buffer is expanded
     if prod(buf.base.st.shape) < prod(buf.st.shape):
-      if len(buf.st.views) == 1 and buf.st.views[-1].mask and all_int(buf.base.st.shape) and \
-          prod(buf.base.st.shape) >= prod([y-x for x,y in buf.st.views[-1].mask]):
+      if (
+        len(buf.st.views) == 1
+        and buf.st.views[-1].mask
+        and all_int(buf.base.st.shape)
+        and prod(buf.base.st.shape) >= prod([y - x for x, y in buf.st.views[-1].mask])
+      ):
         simple_pads.add(buf.base)
       else:
         realizes.add(buf.base)
     return _recurse_lb(buf.base, realizes, allbufs, simple_pads, children)
-  if buf.forced_realize: realizes.add(buf)
+  if buf.forced_realize:
+    realizes.add(buf)
   allbufs[buf] = None
-  if buf.op in LoadOps: realizes.add(buf.base)
+  if buf.op in LoadOps:
+    realizes.add(buf.base)
   if buf.op == LoadOps.COPY:
     assert buf.srcs[0].st.contiguous and buf.srcs[0].size == buf.srcs[0].base.size, "can only copy contig"
     realizes.add(buf.srcs[0].base)
@@ -168,22 +219,30 @@ def _recurse_lb(buf:LazyBuffer, realizes:Set[LazyBuffer], allbufs:Dict[LazyBuffe
     children[x.base][buf] = None
     _recurse_lb(x, realizes, allbufs, simple_pads, children)
 
+
 UNSAFE_PAD_OPS = {BinaryOps.DIV, BinaryOps.CMPLT, BinaryOps.CMPEQ, UnaryOps.LOG2, UnaryOps.EXP2}
-def _is_padding_okay(buf:LazyBuffer, realizes:Set[LazyBuffer]) -> bool:
-  if buf in realizes or buf.realized: return True
+
+
+def _is_padding_okay(buf: LazyBuffer, realizes: Set[LazyBuffer]) -> bool:
+  if buf in realizes or buf.realized:
+    return True
   # NOTE: this broke to_image_idx and coder with JIT
-  if buf.op in UNSAFE_PAD_OPS: return False
+  if buf.op in UNSAFE_PAD_OPS:
+    return False
   return all(_is_padding_okay(x.base, realizes) for x in buf.srcs)
 
-def create_schedule(outs:List[LazyBuffer], seen:Optional[Set[LazyBuffer]]=None) -> List[ScheduleItem]:
-  if seen is None: seen = set()
+
+def create_schedule(outs: List[LazyBuffer], seen: Optional[Set[LazyBuffer]] = None) -> List[ScheduleItem]:
+  if seen is None:
+    seen = set()
 
   # start by just realizing the buffers passed in
   realizes: Set[LazyBuffer] = set([x.base for x in outs if not x.base.realized])
   allbufs: Dict[LazyBuffer, None] = {}
   simple_pads: Set[LazyBuffer] = set()
   children: DefaultDict[LazyBuffer, Dict[LazyBuffer, None]] = defaultdict(dict)
-  for out in outs: _recurse_lb(out.base, realizes, allbufs, simple_pads, children, scheduled=True)
+  for out in outs:
+    _recurse_lb(out.base, realizes, allbufs, simple_pads, children, scheduled=True)
 
   # check if we have to realize pads
   for p in simple_pads:
@@ -193,7 +252,8 @@ def create_schedule(outs:List[LazyBuffer], seen:Optional[Set[LazyBuffer]]=None) 
   # find all reduces, and pair them to a elementwise op. if they can't be cleanly paired, force realize the reduce (or a contig child)
   reduce_for_op: Dict[LazyBuffer, LazyBuffer] = {}
   for r in allbufs.keys():
-    if r != r.base or r.op not in ReduceOps or r in realizes: continue
+    if r != r.base or r.op not in ReduceOps or r in realizes:
+      continue
 
     # follow the reduce down
     child_set: Dict[LazyBuffer, ShapeTracker] = {r: r.st}
@@ -202,7 +262,7 @@ def create_schedule(outs:List[LazyBuffer], seen:Optional[Set[LazyBuffer]]=None) 
     can_chase = True
     while not forced_realize and len(child_set):
       next_child_set = {}
-      for tr,st in child_set.items():
+      for tr, st in child_set.items():
         if tr in realizes:
           realized_children[tr] = st
           # can only have one output buffer
@@ -233,10 +293,13 @@ def create_schedule(outs:List[LazyBuffer], seen:Optional[Set[LazyBuffer]]=None) 
         while len(children[tr]) == 1:
           tr_next = next(iter(children[tr].keys()))
           st_childs = dedup([s for s in tr_next.srcs if s.base == tr])
-          if len(st_childs) > 1: break
-          if st.size != st_childs[0].st.size: break
+          if len(st_childs) > 1:
+            break
+          if st.size != st_childs[0].st.size:
+            break
           st = st + st_childs[0].st
-          if not st.contiguous or tr_next.op in ReduceOps: break
+          if not st.contiguous or tr_next.op in ReduceOps:
+            break
           tr = tr_next
         reduce_for_op[tr] = r
       realizes.add(tr)

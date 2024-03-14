@@ -11,96 +11,136 @@ settings.register_profile("my_profile", max_examples=200, deadline=None)
 settings.load_profile("my_profile")
 
 core_dtypes = list(DTYPES_DICT.values())
-if Device.DEFAULT == "CPU": core_dtypes.remove(dtypes.bfloat16)  # NOTE: this is for teenygrad, don't remove
+if Device.DEFAULT == "CPU":
+  core_dtypes.remove(dtypes.bfloat16)  # NOTE: this is for teenygrad, don't remove
 floats = [dt for dt in core_dtypes if dtypes.is_float(dt)]
+
+
 def is_dtype_supported(dtype: DType, device: str = Device.DEFAULT):
-  if dtype == dtypes.bfloat16: return False # numpy doesn't support bf16, tested separately in TestBFloat16DType
-  if device in ["WEBGPU", "WEBGL"]: return dtype in [dtypes.float, dtypes.int32, dtypes.uint32]
+  if dtype == dtypes.bfloat16:
+    return False  # numpy doesn't support bf16, tested separately in TestBFloat16DType
+  if device in ["WEBGPU", "WEBGL"]:
+    return dtype in [dtypes.float, dtypes.int32, dtypes.uint32]
   # for CI GPU, cl_khr_fp16 isn't supported
   # for CI LLVM, it segfaults because it can't link to the casting function
   # CUDA in CI uses CUDACPU that does not support half
   # PYTHON supports half memoryview in 3.12+ https://github.com/python/cpython/issues/90751
   if dtype == dtypes.half:
-    if device in ["GPU", "LLVM", "CUDA"]: return not CI
-    if device == "PYTHON": return sys.version_info >= (3, 12)
-  if dtype == dtypes.float64: return device != "METAL" and not (OSX and device == "GPU")
+    if device in ["GPU", "LLVM", "CUDA"]:
+      return not CI
+    if device == "PYTHON":
+      return sys.version_info >= (3, 12)
+  if dtype == dtypes.float64:
+    return device != "METAL" and not (OSX and device == "GPU")
   return True
 
-def get_available_cast_dtypes(dtype: DType) -> List[DType]:
-  if not is_dtype_supported(dtype): return []
-  return [v for k, v in DTYPES_DICT.items() if v != dtype and is_dtype_supported(v) and not k.startswith("_")] # dont cast internal dtypes
 
-def _test_to_np(a:Tensor, np_dtype, target):
-  if DEBUG >= 2: print(a)
+def get_available_cast_dtypes(dtype: DType) -> List[DType]:
+  if not is_dtype_supported(dtype):
+    return []
+  return [v for k, v in DTYPES_DICT.items() if v != dtype and is_dtype_supported(v) and not k.startswith("_")]  # dont cast internal dtypes
+
+
+def _test_to_np(a: Tensor, np_dtype, target):
+  if DEBUG >= 2:
+    print(a)
   na = a.numpy()
-  if DEBUG >= 2: print(na, na.dtype, a.lazydata.base.realized)
+  if DEBUG >= 2:
+    print(na, na.dtype, a.lazydata.base.realized)
   try:
     assert na.dtype == np_dtype
     np.testing.assert_allclose(na, target)
   except AssertionError as e:
     raise AssertionError(f"\ntensor {a.numpy()} does not match target {target} with np_dtype {np_dtype}") from e
 
-def _assert_eq(tensor:Tensor, target_dtype:DType, target):
-  if DEBUG >= 2: print(tensor.numpy())
+
+def _assert_eq(tensor: Tensor, target_dtype: DType, target):
+  if DEBUG >= 2:
+    print(tensor.numpy())
   try:
     assert tensor.dtype == target_dtype
     np.testing.assert_allclose(tensor.numpy(), target, rtol=1e-3 if target_dtype == dtypes.float16 else 1e-7)
   except AssertionError as e:
     raise AssertionError(f"\ntensor {tensor.numpy()} dtype {tensor.dtype} does not match target {target} with dtype {target_dtype}") from e
 
-def _test_op(fxn, target_dtype:DType, target):
+
+def _test_op(fxn, target_dtype: DType, target):
   _assert_eq(fxn(), target_dtype, target)
-def _test_cast(a:Tensor, target_dtype:DType):
+
+
+def _test_cast(a: Tensor, target_dtype: DType):
   _test_op(lambda: a.cast(target_dtype), target_dtype, list(a.numpy().astype(target_dtype.np)))
-def _test_bitcast(a:Tensor, target_dtype:DType, target=None):
+
+
+def _test_bitcast(a: Tensor, target_dtype: DType, target=None):
   _test_op(lambda: a.bitcast(target_dtype), target_dtype, target or a.numpy().view(target_dtype.np).tolist())
+
 
 class TestDType(unittest.TestCase):
   DTYPE: Any = None
   DATA: Any = None
+
   @classmethod
   def setUpClass(cls):
-    if not cls.DTYPE or not is_dtype_supported(cls.DTYPE): raise unittest.SkipTest("dtype not supported")
-    if dtypes.is_int(cls.DTYPE): cls.DATA = np.random.randint(0, 100, size=10, dtype=cls.DTYPE.np).tolist()
-    elif cls.DTYPE == dtypes.bool: cls.DATA = np.random.choice([True, False], size=10).tolist()
-    else: cls.DATA = np.random.uniform(0, 1, size=10).tolist()
+    if not cls.DTYPE or not is_dtype_supported(cls.DTYPE):
+      raise unittest.SkipTest("dtype not supported")
+    if dtypes.is_int(cls.DTYPE):
+      cls.DATA = np.random.randint(0, 100, size=10, dtype=cls.DTYPE.np).tolist()
+    elif cls.DTYPE == dtypes.bool:
+      cls.DATA = np.random.choice([True, False], size=10).tolist()
+    else:
+      cls.DATA = np.random.uniform(0, 1, size=10).tolist()
+
   def setUp(self):
-    if self.DTYPE is None: raise unittest.SkipTest("base class")
+    if self.DTYPE is None:
+      raise unittest.SkipTest("base class")
 
-  def test_to_np(self): _test_to_np(Tensor(self.DATA, dtype=self.DTYPE), self.DTYPE.np, np.array(self.DATA, dtype=self.DTYPE.np))
+  def test_to_np(self):
+    _test_to_np(Tensor(self.DATA, dtype=self.DTYPE), self.DTYPE.np, np.array(self.DATA, dtype=self.DTYPE.np))
 
-  def test_casts_to(self): list(map(
-    lambda dtype: _test_cast(Tensor(self.DATA, dtype=dtype), self.DTYPE),
-    get_available_cast_dtypes(self.DTYPE)
-  ))
-  def test_casts_from(self): list(map(
-    lambda dtype: _test_cast(Tensor(self.DATA, dtype=self.DTYPE), dtype),
-    get_available_cast_dtypes(self.DTYPE)
-  ))
+  def test_casts_to(self):
+    list(map(lambda dtype: _test_cast(Tensor(self.DATA, dtype=dtype), self.DTYPE), get_available_cast_dtypes(self.DTYPE)))
+
+  def test_casts_from(self):
+    list(map(lambda dtype: _test_cast(Tensor(self.DATA, dtype=self.DTYPE), dtype), get_available_cast_dtypes(self.DTYPE)))
 
   def test_same_size_ops(self):
-    list(map(
-      lambda dtype: _test_ops(a_dtype=self.DTYPE, b_dtype=dtype) if dtype.itemsize == self.DTYPE.itemsize else None,
-      get_available_cast_dtypes(self.DTYPE)
-    ))
+    list(
+      map(
+        lambda dtype: _test_ops(a_dtype=self.DTYPE, b_dtype=dtype) if dtype.itemsize == self.DTYPE.itemsize else None,
+        get_available_cast_dtypes(self.DTYPE),
+      )
+    )
+
   def test_upcast_ops(self):
-    list(map(
-      lambda dtype: _test_ops(a_dtype=self.DTYPE, b_dtype=dtype) if dtype.itemsize > self.DTYPE.itemsize else None,
-      get_available_cast_dtypes(self.DTYPE)
-  ))
+    list(
+      map(
+        lambda dtype: _test_ops(a_dtype=self.DTYPE, b_dtype=dtype) if dtype.itemsize > self.DTYPE.itemsize else None,
+        get_available_cast_dtypes(self.DTYPE),
+      )
+    )
+
   def test_upcast_to_ops(self):
-    list(map(
-      lambda dtype: _test_ops(a_dtype=dtype, b_dtype=self.DTYPE) if dtype.itemsize < self.DTYPE.itemsize else None,
-      get_available_cast_dtypes(self.DTYPE)
-  ))
+    list(
+      map(
+        lambda dtype: _test_ops(a_dtype=dtype, b_dtype=self.DTYPE) if dtype.itemsize < self.DTYPE.itemsize else None,
+        get_available_cast_dtypes(self.DTYPE),
+      )
+    )
+
   def test_bitcast(self):
-    if Device.DEFAULT == "WEBGL": raise unittest.SkipTest("no bitcast in WebGL GLSL")
-    if self.DTYPE == dtypes.bool: raise unittest.SkipTest("no bools in bitcast")
-    list(map(
-      lambda dtype:
-        _test_bitcast(Tensor(self.DATA, dtype=self.DTYPE), dtype) if dtype.itemsize == self.DTYPE.itemsize and dtype != dtypes.bool else None,
-     get_available_cast_dtypes(self.DTYPE)
-    ))
+    if Device.DEFAULT == "WEBGL":
+      raise unittest.SkipTest("no bitcast in WebGL GLSL")
+    if self.DTYPE == dtypes.bool:
+      raise unittest.SkipTest("no bools in bitcast")
+    list(
+      map(
+        lambda dtype: _test_bitcast(Tensor(self.DATA, dtype=self.DTYPE), dtype)
+        if dtype.itemsize == self.DTYPE.itemsize and dtype != dtypes.bool
+        else None,
+        get_available_cast_dtypes(self.DTYPE),
+      )
+    )
 
   def test_dtypes_fields(self):
     fields = dtypes.fields()
@@ -109,7 +149,7 @@ class TestDType(unittest.TestCase):
 
   def test_resulting_and_init_dtypes_match(self):
     dtypes = list(map(np.dtype, ["bool", "uint8", "int8", "int16", "int32", "int64", "float32", "float64"]))
-    data = [1., 2., 0., 0.5, -1.5, 5.25]
+    data = [1.0, 2.0, 0.0, 0.5, -1.5, 5.25]
     for dt in dtypes:
       arr = np.asarray(data, dtype=dt)
       tin = Tensor(arr).numpy()
@@ -117,15 +157,19 @@ class TestDType(unittest.TestCase):
       assert dt is tin.dtype is tor.dtype, f"dtype mismatch: expected={dt} | tinygrad={tin.dtype} | torch={tor.dtype}"
       np.testing.assert_allclose(tin, tor, atol=1e-6, rtol=1e-3)
 
-def _test_ops(a_dtype:DType, b_dtype:DType, target_dtype=None):
+
+def _test_ops(a_dtype: DType, b_dtype: DType, target_dtype=None):
   target_dtype = target_dtype or least_upper_dtype(a_dtype, b_dtype)
-  if not is_dtype_supported(a_dtype) or not is_dtype_supported(b_dtype) or not is_dtype_supported(target_dtype): return
-  if a_dtype == dtypes.bool or b_dtype == dtypes.bool: return
-  _assert_eq(Tensor([1,2,3,4], dtype=a_dtype)+Tensor([1,2,3,4], dtype=b_dtype), target_dtype, [2,4,6,8])
-  _assert_eq((Tensor([1], dtype=a_dtype).cast(b_dtype)+Tensor([1], dtype=a_dtype).cast(b_dtype)).cast(a_dtype), a_dtype, [2])
-  _assert_eq(Tensor([1,2,3,4], dtype=a_dtype)*Tensor([1,2,3,4], dtype=b_dtype), target_dtype, [1,4,9,16])
-  _assert_eq(Tensor([[1,2],[3,4]], dtype=a_dtype)@Tensor.eye(2, dtype=b_dtype), target_dtype, [[1,2],[3,4]])
-  _assert_eq(Tensor([1,1,1,1], dtype=a_dtype)+Tensor.ones((4,4), dtype=b_dtype), target_dtype, 2*Tensor.ones(4,4).numpy())
+  if not is_dtype_supported(a_dtype) or not is_dtype_supported(b_dtype) or not is_dtype_supported(target_dtype):
+    return
+  if a_dtype == dtypes.bool or b_dtype == dtypes.bool:
+    return
+  _assert_eq(Tensor([1, 2, 3, 4], dtype=a_dtype) + Tensor([1, 2, 3, 4], dtype=b_dtype), target_dtype, [2, 4, 6, 8])
+  _assert_eq((Tensor([1], dtype=a_dtype).cast(b_dtype) + Tensor([1], dtype=a_dtype).cast(b_dtype)).cast(a_dtype), a_dtype, [2])
+  _assert_eq(Tensor([1, 2, 3, 4], dtype=a_dtype) * Tensor([1, 2, 3, 4], dtype=b_dtype), target_dtype, [1, 4, 9, 16])
+  _assert_eq(Tensor([[1, 2], [3, 4]], dtype=a_dtype) @ Tensor.eye(2, dtype=b_dtype), target_dtype, [[1, 2], [3, 4]])
+  _assert_eq(Tensor([1, 1, 1, 1], dtype=a_dtype) + Tensor.ones((4, 4), dtype=b_dtype), target_dtype, 2 * Tensor.ones(4, 4).numpy())
+
 
 @unittest.skipUnless(Device.DEFAULT in ["LLVM", "HIP", "METAL"], "bfloat16 not supported")
 class TestBFloat16(unittest.TestCase):
@@ -151,6 +195,7 @@ class TestBFloat16(unittest.TestCase):
     assert t.dtype == dtypes.bfloat16
     np.testing.assert_allclose(t.numpy(), np.eye(3))
 
+
 @unittest.skipUnless(Device.DEFAULT in ["LLVM", "HIP"], "bfloat16 not supported")
 class TestBFloat16DType(unittest.TestCase):
   def test_bf16_to_float(self):
@@ -166,7 +211,8 @@ class TestBFloat16DType(unittest.TestCase):
     t = Tensor([10000, -1, -1000, -10000, 20]).cast(dtypes.bfloat16)
     t.realize()
     back = t.cast(dtypes.float32)
-    assert tuple(back.numpy().tolist()) == (9984., -1, -1000, -9984, 20)
+    assert tuple(back.numpy().tolist()) == (9984.0, -1, -1000, -9984, 20)
+
 
 @unittest.skipUnless(Device.DEFAULT in ["HIP"], "bfloat16 not supported")
 class TestBFloat16DTypeCast(unittest.TestCase):
@@ -179,7 +225,7 @@ class TestBFloat16DTypeCast(unittest.TestCase):
     np.testing.assert_allclose(back_to_float32.numpy(), original_to_float32.numpy(), rtol=1e-2, atol=1e-3)
 
   def test_f16_to_bf16_edge_cases(self):
-    edge_cases = Tensor([0.0, -0.0, float('inf'), float('-inf'), float('nan')], dtype=dtypes.float16)
+    edge_cases = Tensor([0.0, -0.0, float("inf"), float("-inf"), float("nan")], dtype=dtypes.float16)
     converted = edge_cases.cast(dtypes.bfloat16).cast(dtypes.float32)
     np.testing.assert_equal(converted.numpy(), edge_cases.cast(dtypes.float32).numpy())
 
@@ -197,17 +243,21 @@ class TestBFloat16DTypeCast(unittest.TestCase):
     converted = random_values.cast(dtypes.bfloat16).cast(dtypes.float32)
     np.testing.assert_allclose(converted.numpy(), random_values.cast(dtypes.float32).numpy(), rtol=1e-2, atol=1e-3)
 
-class TestHalfDtype(TestDType): DTYPE = dtypes.half
+
+class TestHalfDtype(TestDType):
+  DTYPE = dtypes.half
+
 
 class TestFloatDType(TestDType):
   DTYPE = dtypes.float
 
   def test_float_to_uint(self):
-    _test_op(lambda: Tensor([-0.9, -0.3, 1.2], dtype=dtypes.float32).cast(dtypes.uint32), dtypes.uint32,
-             [0, 0, 1])
+    _test_op(lambda: Tensor([-0.9, -0.3, 1.2], dtype=dtypes.float32).cast(dtypes.uint32), dtypes.uint32, [0, 0, 1])
+
 
 class TestDoubleDtype(TestDType):
   DTYPE = dtypes.double
+
   @unittest.skipIf(getenv("CUDACPU"), "conversion not supported on CUDACPU")
   def test_float64_increased_precision(self):
     for func in [
@@ -226,24 +276,27 @@ class TestDoubleDtype(TestDType):
       np.testing.assert_allclose(func(Tensor(a, dtype=self.DTYPE)).numpy(), func(torch.tensor(a, dtype=torch.float64)), rtol=1e-12, atol=1e-12)
 
   def test_float64_to_float32_cast_inf(self):
-    _test_op(lambda: Tensor([3.4e40, 3.4e38, 1, 0], dtype=dtypes.float64).cast(dtypes.float32),
-             dtypes.float32, [float('inf'), 3.4e38, 1, 0])
+    _test_op(lambda: Tensor([3.4e40, 3.4e38, 1, 0], dtype=dtypes.float64).cast(dtypes.float32), dtypes.float32, [float("inf"), 3.4e38, 1, 0])
 
 
 class TestInt8Dtype(TestDType):
   DTYPE = dtypes.int8
-  @unittest.skipIf(getenv("CUDA",0)==1 or getenv("PTX", 0)==1, "cuda saturation works differently")
+
+  @unittest.skipIf(getenv("CUDA", 0) == 1 or getenv("PTX", 0) == 1, "cuda saturation works differently")
   def test_int8_to_uint8_negative(self):
     _test_op(lambda: Tensor([-1, -2, -3, -4], dtype=dtypes.int8).cast(dtypes.uint8), dtypes.uint8, [255, 254, 253, 252])
 
   def test_int8_to_uint16_negative(self):
-    _test_op(lambda: Tensor([-1, -2, -3, -4], dtype=dtypes.int8).cast(dtypes.uint16), dtypes.uint16, [2**16-1, 2**16-2, 2**16-3, 2**16-4])
+    _test_op(lambda: Tensor([-1, -2, -3, -4], dtype=dtypes.int8).cast(dtypes.uint16), dtypes.uint16, [2**16 - 1, 2**16 - 2, 2**16 - 3, 2**16 - 4])
+
 
 class TestUint8Dtype(TestDType):
   DTYPE = dtypes.uint8
-  @unittest.skipIf(getenv("CUDA",0)==1 or getenv("PTX", 0)==1, "cuda saturation works differently")
+
+  @unittest.skipIf(getenv("CUDA", 0) == 1 or getenv("PTX", 0) == 1, "cuda saturation works differently")
   def test_uint8_to_int8_overflow(self):
     _test_op(lambda: Tensor([255, 254, 253, 252], dtype=dtypes.uint8).cast(dtypes.int8), dtypes.int8, [-1, -2, -3, -4])
+
 
 @unittest.skipIf(Device.DEFAULT == "WEBGL", "No bitcast on WebGL")
 class TestBitCast(unittest.TestCase):
@@ -252,66 +305,90 @@ class TestBitCast(unittest.TestCase):
       _test_bitcast(Tensor([100000], dtype=dtypes.float32), dtypes.uint8, [100000])
 
   def test_bitcast_float_to_int32(self):
-    a = Tensor([1.,2,3])
+    a = Tensor([1.0, 2, 3])
     b = a.bitcast(dtypes.int32)
-    assert b.numpy()[0] == 0x3f800000
+    assert b.numpy()[0] == 0x3F800000
 
   def test_bitcast_upcasted(self):
-    a = Tensor.zeros(100, 4, dtype=dtypes.int32).contiguous() + 0x3f800000
+    a = Tensor.zeros(100, 4, dtype=dtypes.int32).contiguous() + 0x3F800000
     b = a.bitcast(dtypes.float32)
-    assert b.numpy()[0,0] == 1.
+    assert b.numpy()[0, 0] == 1.0
 
-class TestInt16Dtype(TestDType): DTYPE = dtypes.int16
+
+class TestInt16Dtype(TestDType):
+  DTYPE = dtypes.int16
+
 
 class TestUint16Dtype(TestDType):
   DTYPE = dtypes.uint16
 
   def test_uint16_to_int8_overflow(self):
-    _test_op(lambda: Tensor([2**16-1, 2**16-2, 1, 0], dtype=dtypes.uint16).cast(dtypes.int8), dtypes.int8, [-1, -2, 1, 0])
+    _test_op(lambda: Tensor([2**16 - 1, 2**16 - 2, 1, 0], dtype=dtypes.uint16).cast(dtypes.int8), dtypes.int8, [-1, -2, 1, 0])
 
-class TestInt32Dtype(TestDType): DTYPE = dtypes.int32
-class TestUint32Dtype(TestDType): DTYPE = dtypes.uint32
 
-class TestInt64Dtype(TestDType): DTYPE = dtypes.int64
-class TestUint64Dtype(TestDType): DTYPE = dtypes.uint64
+class TestInt32Dtype(TestDType):
+  DTYPE = dtypes.int32
 
-class TestBoolDtype(TestDType): DTYPE = dtypes.bool
+
+class TestUint32Dtype(TestDType):
+  DTYPE = dtypes.uint32
+
+
+class TestInt64Dtype(TestDType):
+  DTYPE = dtypes.int64
+
+
+class TestUint64Dtype(TestDType):
+  DTYPE = dtypes.uint64
+
+
+class TestBoolDtype(TestDType):
+  DTYPE = dtypes.bool
+
 
 class TestImageDType(unittest.TestCase):
   def test_image_scalar(self):
-    assert dtypes.imagef((10,10)).scalar() == dtypes.float32
-    assert dtypes.imageh((10,10)).scalar() == dtypes.float32
+    assert dtypes.imagef((10, 10)).scalar() == dtypes.float32
+    assert dtypes.imageh((10, 10)).scalar() == dtypes.float32
+
   def test_image_vec(self):
-    assert dtypes.imagef((10,10)).vec(4) == dtypes.float32.vec(4)
-    assert dtypes.imageh((10,10)).vec(4) == dtypes.float32.vec(4)
+    assert dtypes.imagef((10, 10)).vec(4) == dtypes.float32.vec(4)
+    assert dtypes.imageh((10, 10)).vec(4) == dtypes.float32.vec(4)
+
 
 class TestEqStrDType(unittest.TestCase):
   def test_image_ne(self):
-    if ImageDType is None: raise unittest.SkipTest("no ImageDType support")
+    if ImageDType is None:
+      raise unittest.SkipTest("no ImageDType support")
     assert dtypes.float == dtypes.float32, "float doesn't match?"
-    assert dtypes.imagef((1,2,4)) != dtypes.imageh((1,2,4)), "different image dtype doesn't match"
-    assert dtypes.imageh((1,2,4)) != dtypes.imageh((1,4,2)), "different shape doesn't match"
-    assert dtypes.imageh((1,2,4)) == dtypes.imageh((1,2,4)), "same shape matches"
-    assert isinstance(dtypes.imageh((1,2,4)), ImageDType)
+    assert dtypes.imagef((1, 2, 4)) != dtypes.imageh((1, 2, 4)), "different image dtype doesn't match"
+    assert dtypes.imageh((1, 2, 4)) != dtypes.imageh((1, 4, 2)), "different shape doesn't match"
+    assert dtypes.imageh((1, 2, 4)) == dtypes.imageh((1, 2, 4)), "same shape matches"
+    assert isinstance(dtypes.imageh((1, 2, 4)), ImageDType)
+
   def test_ptr_ne(self):
-    if PtrDType is None: raise unittest.SkipTest("no PtrDType support")
+    if PtrDType is None:
+      raise unittest.SkipTest("no PtrDType support")
     # TODO: is this the wrong behavior?
     assert PtrDType(dtypes.float32) == dtypes.float32
     assert not (PtrDType(dtypes.float32) != dtypes.float32)
     assert PtrDType(dtypes.float32) == PtrDType(dtypes.float32)
     assert not (PtrDType(dtypes.float32) != PtrDType(dtypes.float32))
-    #assert PtrDType(dtypes.float32) != dtypes.float32
+    # assert PtrDType(dtypes.float32) != dtypes.float32
+
   def test_strs(self):
-    if PtrDType is None: raise unittest.SkipTest("no PtrDType support")
-    self.assertEqual(str(dtypes.imagef((1,2,4))), "dtypes.imagef((1, 2, 4))")
+    if PtrDType is None:
+      raise unittest.SkipTest("no PtrDType support")
+    self.assertEqual(str(dtypes.imagef((1, 2, 4))), "dtypes.imagef((1, 2, 4))")
     self.assertEqual(str(PtrDType(dtypes.float32)), "ptr.dtypes.float")
+
 
 class TestHelpers(unittest.TestCase):
   signed_ints = (dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64)
   uints = (dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64)
   floats = (dtypes.float16, dtypes.float32, dtypes.float64)
 
-  @given(strat.sampled_from(signed_ints+uints), strat.integers(min_value=1, max_value=8))
+  @given(strat.sampled_from(signed_ints + uints), strat.integers(min_value=1, max_value=8))
   def test_is_int(self, dtype, amt):
     assert dtypes.is_int(dtype.vec(amt) if amt > 1 else dtype)
     assert not dtypes.is_float(dtype.vec(amt) if amt > 1 else dtype)
@@ -337,9 +414,11 @@ class TestHelpers(unittest.TestCase):
   def test_scalar(self, dtype, amt):
     assert dtype.vec(amt).scalar() == dtype
 
+
 class TestTypeSpec(unittest.TestCase):
   def setUp(self):
     self.old_default_int, self.old_default_float = dtypes.default_int, dtypes.default_float
+
   def tearDown(self):
     dtypes.default_int, dtypes.default_float = self.old_default_int, self.old_default_float
 
@@ -355,7 +434,9 @@ class TestTypeSpec(unittest.TestCase):
     dtypes.default_float = dtypes.float64
     assert dtypes.default_float == dtypes.float64
 
-  @given(strat.sampled_from([dtypes.int8,dtypes.int16,dtypes.int32,dtypes.int64]), strat.sampled_from([dtypes.float16,dtypes.float32,dtypes.float64]))
+  @given(
+    strat.sampled_from([dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64]), strat.sampled_from([dtypes.float16, dtypes.float32, dtypes.float64])
+  )
   def test_creation(self, default_int, default_float):
     dtypes.default_int, dtypes.default_float = default_int, default_float
     assert Tensor(True).dtype == dtypes.bool
@@ -365,23 +446,24 @@ class TestTypeSpec(unittest.TestCase):
     assert Tensor([]).dtype == dtypes.default_float
     assert Tensor([1]).dtype == dtypes.default_int
     assert Tensor([1.1]).dtype == dtypes.default_float
-    #assert Tensor([0,1], dtype=dtypes.bfloat16).dtype == dtypes.bfloat16
+    # assert Tensor([0,1], dtype=dtypes.bfloat16).dtype == dtypes.bfloat16
 
     assert Tensor.eye(0).dtype == dtypes.default_float
     assert Tensor.eye(3).dtype == dtypes.default_float
     assert Tensor.eye(3, dtype=dtypes.float16).dtype == dtypes.float16
     assert Tensor.eye(3, dtype=dtypes.int64).dtype == dtypes.int64
 
-
-  @given(strat.sampled_from([dtypes.int8,dtypes.int16,dtypes.int32,dtypes.int64]), strat.sampled_from([dtypes.float16,dtypes.float32,dtypes.float64]))
+  @given(
+    strat.sampled_from([dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64]), strat.sampled_from([dtypes.float16, dtypes.float32, dtypes.float64])
+  )
   def test_full(self, default_int, default_float):
     dtypes.default_int, dtypes.default_float = default_int, default_float
 
-    assert Tensor.ones([2,3]).dtype == dtypes.default_float
-    assert Tensor.zeros([2,3]).dtype == dtypes.default_float
-    assert Tensor.full([2,3], 3.3).dtype == dtypes.default_float
-    assert Tensor.full([2,3], 3).dtype == dtypes.default_int
-    assert Tensor.full([2,3], True).dtype == dtypes.bool
+    assert Tensor.ones([2, 3]).dtype == dtypes.default_float
+    assert Tensor.zeros([2, 3]).dtype == dtypes.default_float
+    assert Tensor.full([2, 3], 3.3).dtype == dtypes.default_float
+    assert Tensor.full([2, 3], 3).dtype == dtypes.default_int
+    assert Tensor.full([2, 3], True).dtype == dtypes.bool
 
     assert Tensor.zeros(3, 3).dtype == dtypes.default_float
     assert Tensor.zeros(3, 3, dtype=dtypes.float16).dtype == dtypes.float16
@@ -397,10 +479,12 @@ class TestTypeSpec(unittest.TestCase):
     assert Tensor.full((3, 3), 3, dtype=dtypes.int64).dtype == dtypes.int64
 
   def test_reduce_0d_default(self):
-    assert Tensor.ones([2,3,0]).sum(2).dtype ==  dtypes.default_float
-    assert Tensor.ones([2,3,0], dtype=dtypes.int).sum(2).dtype == dtypes.int
+    assert Tensor.ones([2, 3, 0]).sum(2).dtype == dtypes.default_float
+    assert Tensor.ones([2, 3, 0], dtype=dtypes.int).sum(2).dtype == dtypes.int
 
-  @given(strat.sampled_from([dtypes.int8,dtypes.int16,dtypes.int32,dtypes.int64]), strat.sampled_from([dtypes.float16,dtypes.float32,dtypes.float64]))
+  @given(
+    strat.sampled_from([dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64]), strat.sampled_from([dtypes.float16, dtypes.float32, dtypes.float64])
+  )
   def test_arange(self, default_int, default_float):
     dtypes.default_int, dtypes.default_float = default_int, default_float
 
@@ -417,13 +501,17 @@ class TestTypeSpec(unittest.TestCase):
   def test_bool_ops(self, dtype, op):
     assert op(Tensor.rand(4, 4, dtype=dtype), Tensor.rand(4, 4, dtype=dtype)).dtype == dtypes.bool
 
-  @given(strat.sampled_from(core_dtypes),
-         strat.sampled_from([dtypes.int8,dtypes.int16,dtypes.int32,dtypes.int64]), strat.sampled_from([dtypes.float16,dtypes.float32,dtypes.float64]))
+  @given(
+    strat.sampled_from(core_dtypes),
+    strat.sampled_from([dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64]),
+    strat.sampled_from([dtypes.float16, dtypes.float32, dtypes.float64]),
+  )
   def test_functions_return_index(self, dtype, default_int, default_float):
     dtypes.default_int, dtypes.default_float = default_int, default_float
     assert Tensor([0, 1], dtype=dtype).argmax().dtype == dtypes.default_int
     assert Tensor([0, 1], dtype=dtype).argmin().dtype == dtypes.default_int
     assert Tensor([0, 1], dtype=dtype).multinomial().dtype == dtypes.default_int
+
 
 class TestTypePromotion(unittest.TestCase):
   @given(strat.sampled_from(core_dtypes))
@@ -459,9 +547,11 @@ class TestTypePromotion(unittest.TestCase):
   def test_float_to_float(self, dt):
     assert least_upper_float(dt) == dt
 
+
 class TestAutoCastType(unittest.TestCase):
   def setUp(self):
     self.old_default_int, self.old_default_float = dtypes.default_int, dtypes.default_float
+
   def tearDown(self):
     dtypes.default_int, dtypes.default_float = self.old_default_int, self.old_default_float
 
@@ -501,7 +591,7 @@ class TestAutoCastType(unittest.TestCase):
     assert (Tensor([0, 1], dtype=dtypes.uint32)).sum().dtype == dtypes.uint32
     assert (Tensor([0, 1], dtype=dtypes.uint64)).sum().dtype == dtypes.uint64
     assert (Tensor([0, 1], dtype=dtypes.float16)).sum().dtype == dtypes.float16
-    #assert (Tensor([0, 1], dtype=dtypes.bfloat16)).sum().dtype == dtypes.bfloat16
+    # assert (Tensor([0, 1], dtype=dtypes.bfloat16)).sum().dtype == dtypes.bfloat16
     assert (Tensor([0, 1], dtype=dtypes.float32)).sum().dtype == dtypes.float32
     assert (Tensor([0, 1], dtype=dtypes.float64)).sum().dtype == dtypes.float64
 
@@ -516,7 +606,7 @@ class TestAutoCastType(unittest.TestCase):
     assert (Tensor([0, 1], dtype=dtypes.uint32)).cumsum(0).dtype == dtypes.uint32
     assert (Tensor([0, 1], dtype=dtypes.uint64)).cumsum(0).dtype == dtypes.uint64
     assert (Tensor([0, 1], dtype=dtypes.float16)).cumsum(0).dtype == dtypes.float16
-    #assert (Tensor([0, 1], dtype=dtypes.bfloat16)).cumsum(0).dtype == dtypes.bfloat16
+    # assert (Tensor([0, 1], dtype=dtypes.bfloat16)).cumsum(0).dtype == dtypes.bfloat16
     assert (Tensor([0, 1], dtype=dtypes.float32)).cumsum(0).dtype == dtypes.float32
     assert (Tensor([0, 1], dtype=dtypes.float64)).cumsum(0).dtype == dtypes.float64
 
@@ -570,6 +660,7 @@ class TestAutoCastType(unittest.TestCase):
     assert (Tensor([1, 2], dtype=dtypes.float16) / 2).dtype == dtypes.float16
     assert (Tensor([1, 2], dtype=dtypes.float16) / 2.0).dtype == dtypes.float16
 
+
 class TestImplicitFunctionTypeChange(unittest.TestCase):
   def test_functions(self):
     result = []
@@ -591,5 +682,6 @@ class TestImplicitFunctionTypeChange(unittest.TestCase):
       # TODO: fix this
       assert not all(result)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

@@ -6,9 +6,12 @@ from tinygrad.shape.symbolic import Variable
 from tinygrad.tensor import Tensor
 import numpy as np
 
+
 class TestSymbolicJit(unittest.TestCase):
   def test_plus1(self):
-    def f(a): return (a+1).realize()
+    def f(a):
+      return (a + 1).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
@@ -19,7 +22,9 @@ class TestSymbolicJit(unittest.TestCase):
     assert_jit_cache_len(jf, 1)
 
   def test_add(self):
-    def f(a, b): return (a+b).realize()
+    def f(a, b):
+      return (a + b).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
@@ -31,7 +36,9 @@ class TestSymbolicJit(unittest.TestCase):
     assert_jit_cache_len(jf, 1)
 
   def test_matmul(self):
-    def f(a, b): return (a@b).realize()
+    def f(a, b):
+      return (a @ b).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
@@ -44,9 +51,10 @@ class TestSymbolicJit(unittest.TestCase):
 
   def test_mixed_with_no_symbol_kernel(self):
     def f(a, b):
-      s = (a@b).realize()
-      s = (s+s).realize() # this one does not have symbols in input
+      s = (a @ b).realize()
+      s = (s + s).realize()  # this one does not have symbols in input
       return s
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
@@ -58,7 +66,9 @@ class TestSymbolicJit(unittest.TestCase):
     assert_jit_cache_len(jf, 2)
 
   def test_attention(self):
-    def f(q, k, v): return Tensor.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)).realize()
+    def f(q, k, v):
+      return Tensor.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
@@ -71,31 +81,37 @@ class TestSymbolicJit(unittest.TestCase):
     assert_jit_cache_len(jf, 5)
 
   def test_cat_dim0(self):
-    def f(a, b): return a.cat(b, dim=0).realize()
+    def f(a, b):
+      return a.cat(b, dim=0).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
       a = Tensor.rand(i, 3)
       b = Tensor.rand(2, 3)
-      symbolic = jf(a.reshape(vi, 3), b).reshape(i+2, 3).numpy()
+      symbolic = jf(a.reshape(vi, 3), b).reshape(i + 2, 3).numpy()
       expected = f(a, b).numpy()
       np.testing.assert_allclose(symbolic, expected, atol=1e-6, rtol=1e-6)
     assert_jit_cache_len(jf, 1)
 
   def test_cat_dim1(self):
-    def f(a, b): return a.cat(b, dim=1).realize()
+    def f(a, b):
+      return a.cat(b, dim=1).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
       a = Tensor.rand(3, i)
       b = Tensor.rand(3, 2)
-      symbolic = jf(a.reshape(3, vi), b).reshape(3, i+2).numpy()
+      symbolic = jf(a.reshape(3, vi), b).reshape(3, i + 2).numpy()
       expected = f(a, b).numpy()
       np.testing.assert_allclose(symbolic, expected, atol=1e-6, rtol=1e-6)
     assert_jit_cache_len(jf, 1)
 
   def test_cat_dim0_two_vars(self):
-    def f(a, b): return a.cat(b, dim=0).realize()
+    def f(a, b):
+      return a.cat(b, dim=0).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       for j in range(1, 5):
@@ -103,13 +119,15 @@ class TestSymbolicJit(unittest.TestCase):
         vj = Variable("j", 1, 10).bind(j)
         a = Tensor.rand(i, 3)
         b = Tensor.rand(j, 3)
-        symbolic = jf(a.reshape(vi, 3), b.reshape(vj, 3)).reshape(i+j, 3).numpy()
+        symbolic = jf(a.reshape(vi, 3), b.reshape(vj, 3)).reshape(i + j, 3).numpy()
         expected = f(a, b).numpy()
         np.testing.assert_allclose(symbolic, expected, atol=1e-6, rtol=1e-6)
     assert_jit_cache_len(jf, 1)
 
   def test_cat_dim1_two_vars(self):
-    def f(a, b): return a.cat(b, dim=1).realize()
+    def f(a, b):
+      return a.cat(b, dim=1).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       for j in range(1, 5):
@@ -117,13 +135,15 @@ class TestSymbolicJit(unittest.TestCase):
         vj = Variable("j", 1, 10).bind(j)
         a = Tensor.rand(3, i)
         b = Tensor.rand(3, j)
-        symbolic = jf(a.reshape(3, vi), b.reshape(3, vj)).reshape(3, i+j).numpy()
+        symbolic = jf(a.reshape(3, vi), b.reshape(3, vj)).reshape(3, i + j).numpy()
         expected = f(a, b).numpy()
         np.testing.assert_allclose(symbolic, expected, atol=1e-6, rtol=1e-6)
     assert_jit_cache_len(jf, 1)
 
   def test_two_vars_plus1_ij(self):
-    def f(a, b): return (a@b+1).realize()
+    def f(a, b):
+      return (a @ b + 1).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       for j in range(1, 5):
@@ -137,7 +157,9 @@ class TestSymbolicJit(unittest.TestCase):
     assert_jit_cache_len(jf, 1)
 
   def test_two_vars_plus1_ji(self):
-    def f(a, b): return (a@b+1).realize()
+    def f(a, b):
+      return (a @ b + 1).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       for j in range(1, 5):
@@ -152,7 +174,9 @@ class TestSymbolicJit(unittest.TestCase):
 
   def test_jit_symbolic_shape_mismatch(self):
     @TinyJit
-    def add(a, b): return (a+b).realize()
+    def add(a, b):
+      return (a + b).realize()
+
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
       a = Tensor.rand(3, i).reshape(3, vi)
@@ -166,16 +190,19 @@ class TestSymbolicJit(unittest.TestCase):
 
   def test_shrink(self):
     # shrink is a movement, so we pair it with a simple function to test the JIT interaction
-    def f(a): return (a+1).realize()
+    def f(a):
+      return (a + 1).realize()
+
     jf = TinyJit(f)
     for i in range(1, 5):
       vi = Variable("i", 1, 10).bind(i)
       a = Tensor.rand(7, 11)
-      symbolic = a.shrink(((3,5),(vi,vi+2)))
+      symbolic = a.shrink(((3, 5), (vi, vi + 2)))
       symbolic = jf(symbolic).numpy()
-      expected = f(a.shrink(((3,5),(i,i+2)))).numpy()
+      expected = f(a.shrink(((3, 5), (i, i + 2)))).numpy()
       np.testing.assert_allclose(symbolic, expected, atol=1e-6, rtol=1e-6)
     assert_jit_cache_len(jf, 1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

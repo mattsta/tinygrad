@@ -12,7 +12,9 @@ from tinygrad.shape.view import View
 from tinygrad.shape.symbolic import Variable
 import numpy as np
 import time
-inf, nan = float('inf'), float('nan')
+
+inf, nan = float("inf"), float("nan")
+
 
 class TestLazyOp(unittest.TestCase):
   def test_lazyop_str(self):
@@ -26,9 +28,11 @@ class TestLazyOp(unittest.TestCase):
     st = time.monotonic()
     for i in range(25):
       p = Tensor([1]).lazydata
-      for _ in range(i): p = p.e(BinaryOps.ADD, p)
+      for _ in range(i):
+        p = p.e(BinaryOps.ADD, p)
       # sanity check if caching works this should be way faster
-      assert time.monotonic() -st < 0.5, f"{i}"
+      assert time.monotonic() - st < 0.5, f"{i}"
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

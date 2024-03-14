@@ -5,20 +5,21 @@ from tinygrad import Tensor, Device, dtypes
 from tinygrad.lazy import LazyBuffer, ReduceOps
 from tinygrad.realize import create_schedule
 
+
 class TestLazyBuffer(unittest.TestCase):
   def test_fromcpu_shape_tracker(self):
     def helper(a: np.ndarray):
       print(a.shape, a.strides, a.flags.c_contiguous)
       b = Tensor(a).lazydata
-      #assert b.st.contiguous == a.flags.c_contiguous
+      # assert b.st.contiguous == a.flags.c_contiguous
       assert b.st.shape == a.shape
       np.testing.assert_equal(a, Tensor(b).numpy())
 
     for ndims in range(1, 4):
-      a = np.random.randn(*(4,)*ndims).astype(np.float32)
+      a = np.random.randn(*(4,) * ndims).astype(np.float32)
       for stride in [-2, 1, 2]:
         for start in [0, 1]:
-          helper(a[(slice(start, None, stride),)*ndims])
+          helper(a[(slice(start, None, stride),) * ndims])
 
   def test_shuffle_pad_ops_cmpeq(self):
     y = Tensor([1]).cat(Tensor([1]) == 0).numpy()
@@ -47,15 +48,15 @@ class TestLazyBuffer(unittest.TestCase):
 
   def test_shrink_const_into_zero(self):
     # regression test to make sure the shapetracker is preserved
-    a = Tensor.zeros(4,4,4).shrink((None, (0,0), None))
-    b = Tensor.zeros(4,1,4)
+    a = Tensor.zeros(4, 4, 4).shrink((None, (0, 0), None))
+    b = Tensor.zeros(4, 1, 4)
     c = a.cat(b, dim=1)
     np.testing.assert_allclose(c.numpy(), np.concatenate((a.numpy(), b.numpy()), axis=1))
 
   def test_shrink_const_then_cast(self):
     # regression test to make sure the shapetracker is preserved
-    a = Tensor.zeros(4,4,4).shrink((None, (0,0), None)).cast(dtypes.int32)
-    b = Tensor.zeros(4,1,4)
+    a = Tensor.zeros(4, 4, 4).shrink((None, (0, 0), None)).cast(dtypes.int32)
+    b = Tensor.zeros(4, 1, 4)
     c = a.cat(b, dim=1)
     np.testing.assert_allclose(c.numpy(), np.concatenate((a.numpy(), b.numpy()), axis=1))
 
@@ -67,6 +68,7 @@ class TestLazyBuffer(unittest.TestCase):
     lb: LazyBuffer = Tensor([1], dtype=dtypes.float).lazydata
     assert lb.const(1).base.arg == 1.0
     assert type(lb.const(1).base.arg) is float
+
 
 class TestReduceOp(unittest.TestCase):
   def test_no_split_reduce_kernel(self):
@@ -91,6 +93,7 @@ class TestReduceOp(unittest.TestCase):
     assert len(sched) == 2
     for s in sched:
       assert s.ast[0].src[0].op is ReduceOps.SUM
+
 
 if __name__ == "__main__":
   unittest.main()

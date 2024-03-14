@@ -13,8 +13,9 @@ from tinygrad.lazy import Buffer, create_lazybuffer
 from tinygrad.device import CompiledASTRunner, Device
 from tinygrad.shape.shapetracker import ShapeTracker
 
+
 # we don't always have GPU support, so the type signature is the abstract CompiledBuffer instead of GPUBuffer
-def atan2_gpu(ret:Buffer, a:Buffer, b:Buffer):
+def atan2_gpu(ret: Buffer, a: Buffer, b: Buffer):
   assert a.dtype == b.dtype and a.dtype == dtypes.float32, "gpu function only supports float32"
   src = """
   __kernel void atan2_gpu(global float *c, global float *a, global float *b) {
@@ -23,7 +24,10 @@ def atan2_gpu(ret:Buffer, a:Buffer, b:Buffer):
   }"""
   CompiledASTRunner("atan2_gpu", src, Device[ret.device], global_size=[ret.size]).exec([ret, a, b])
 
-def atan2_cpu(ret:Buffer, a:Buffer, b:Buffer): ret.copyin(np.require(np.arctan2(a._buf, b._buf), requirements='C').data)
+
+def atan2_cpu(ret: Buffer, a: Buffer, b: Buffer):
+  ret.copyin(np.require(np.arctan2(a._buf, b._buf), requirements="C").data)
+
 
 # *** second, we write the ATan2 mlop ***
 # NOTE: The derivative of atan2 doesn't need a custom op! https://www.liquisearch.com/atan2/derivative
@@ -33,27 +37,38 @@ from tinygrad.ops import LoadOps, BinaryOps
 from tinygrad.lazy import LazyBuffer
 from tinygrad.tensor import Function
 
+
 class ATan2(Function):
-  def forward(self, a:LazyBuffer, b:LazyBuffer) -> LazyBuffer:
+  def forward(self, a: LazyBuffer, b: LazyBuffer) -> LazyBuffer:
     assert prod(a.shape) == prod(b.shape) and a.device == b.device, "shape or device mismatch"
     self.a, self.b = a, b
-    return create_lazybuffer(a.device, ShapeTracker.from_shape(a.shape), max(a.dtype, b.dtype), LoadOps.CUSTOM,
-                             arg={"GPU": atan2_gpu, "CPU": atan2_cpu}[a.device], srcs=(a.contiguous(), b.contiguous()))
-  def backward(self, grad_output:LazyBuffer) -> Tuple[Optional[LazyBuffer], Optional[LazyBuffer]]:
+    return create_lazybuffer(
+      a.device,
+      ShapeTracker.from_shape(a.shape),
+      max(a.dtype, b.dtype),
+      LoadOps.CUSTOM,
+      arg={"GPU": atan2_gpu, "CPU": atan2_cpu}[a.device],
+      srcs=(a.contiguous(), b.contiguous()),
+    )
+
+  def backward(self, grad_output: LazyBuffer) -> Tuple[Optional[LazyBuffer], Optional[LazyBuffer]]:
     denom = (self.a.e(BinaryOps.MUL, self.a)).e(BinaryOps.ADD, self.b.e(BinaryOps.MUL, self.b))
-    return grad_output.e(BinaryOps.MUL, self.b.e(BinaryOps.DIV, denom)) if self.needs_input_grad[0] else None, \
-           grad_output.e(BinaryOps.MUL, self.a.const(0).e(BinaryOps.SUB, self.a).e(BinaryOps.DIV, denom)) if self.needs_input_grad[1] else None
+    return grad_output.e(BinaryOps.MUL, self.b.e(BinaryOps.DIV, denom)) if self.needs_input_grad[0] else None, grad_output.e(
+      BinaryOps.MUL, self.a.const(0).e(BinaryOps.SUB, self.a).e(BinaryOps.DIV, denom)
+    ) if self.needs_input_grad[1] else None
+
 
 # *** third, we use our lovely new mlop in some tests ***
 
 from tinygrad.tensor import Tensor
 
+
 @unittest.skipUnless(Device.DEFAULT in ["CPU", "GPU"], "atan2 is only implemented for CPU and GPU")
 class TestCustomFunction(unittest.TestCase):
   def test_atan2_forward(self):
     # create some random Tensors, permute them just because we can
-    a = Tensor.randn(4,4,requires_grad=True).permute(1,0)
-    b = Tensor.randn(4,4,requires_grad=True).permute(1,0)
+    a = Tensor.randn(4, 4, requires_grad=True).permute(1, 0)
+    b = Tensor.randn(4, 4, requires_grad=True).permute(1, 0)
 
     # run the forward pass. note: up until the .numpy(), it's all lazy
     c = ATan2.apply(a, b)
@@ -65,8 +80,8 @@ class TestCustomFunction(unittest.TestCase):
   # fun fact, this never actually calls forward, so it works in all the backends
   def test_atan2_backward(self):
     # have to go forward before we can go backward
-    a = Tensor.randn(4,4,requires_grad=True).permute(1,0)
-    b = Tensor.randn(4,4,requires_grad=True).permute(1,0)
+    a = Tensor.randn(4, 4, requires_grad=True).permute(1, 0)
+    b = Tensor.randn(4, 4, requires_grad=True).permute(1, 0)
     c = ATan2.apply(a, b)
 
     # run the backward pass
@@ -77,6 +92,7 @@ class TestCustomFunction(unittest.TestCase):
 
     # check the backward pass (in torch)
     import torch
+
     ta, tb = torch.tensor(a.numpy(), requires_grad=True), torch.tensor(b.numpy(), requires_grad=True)
     tc = torch.atan2(ta, tb)
     tc.mean().backward()
@@ -90,14 +106,15 @@ class TestCustomFunction(unittest.TestCase):
     from tinygrad.features.jit import TinyJit
 
     @TinyJit
-    def jitted_atan2(a:Tensor, b:Tensor) -> Tensor:
+    def jitted_atan2(a: Tensor, b: Tensor) -> Tensor:
       return ATan2.apply(a, b).realize()
 
     for _ in range(5):
-      a = Tensor.randn(4,4,requires_grad=True).permute(1,0)
-      b = Tensor.randn(4,4,requires_grad=True).permute(1,0)
+      a = Tensor.randn(4, 4, requires_grad=True).permute(1, 0)
+      b = Tensor.randn(4, 4, requires_grad=True).permute(1, 0)
       c = jitted_atan2(a, b)
       np.testing.assert_allclose(c.numpy(), np.arctan2(a.numpy(), b.numpy()), atol=1e-5)
+
 
 if __name__ == "__main__":
   unittest.main()

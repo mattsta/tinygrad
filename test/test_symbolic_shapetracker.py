@@ -3,6 +3,7 @@ from tinygrad.shape.shapetracker import ShapeTracker, View
 from tinygrad.shape.symbolic import Variable, NumNode
 from tinygrad.tensor import Tensor
 
+
 class TestSymbolic(unittest.TestCase):
   def test_symbolic_st(self):
     x = Variable("x", 1, 100)
@@ -28,11 +29,11 @@ class TestSymbolic(unittest.TestCase):
     k = Variable("k", 1, 5).bind(3)
     t = Tensor.rand(3, 4).reshape(i, 4).cat(Tensor.rand(3, 4).reshape(j, 4), dim=0).cat(Tensor.rand(3, 4).reshape(k, 4), dim=0)
     st = t.lazydata.st
-    assert st.shape == (i+j+k, 4)
+    assert st.shape == (i + j + k, 4)
     assert st.real_strides() == (4, 1)
     t = Tensor.rand(3, 3).reshape(i, 3).cat(Tensor.rand(3, 3).reshape(i, 3), dim=0).cat(Tensor.rand(3, 3), dim=0)
     st = t.lazydata.st
-    assert st.shape == (2*i+3, 3)
+    assert st.shape == (2 * i + 3, 3)
     assert st.real_strides() == (3, 1)
 
   def test_cat_dim1_strides(self):
@@ -41,8 +42,9 @@ class TestSymbolic(unittest.TestCase):
     k = Variable("k", 1, 5).bind(4)
     t = Tensor.rand(3, 4).reshape(3, i).cat(Tensor.rand(3, 4).reshape(3, j), dim=1).cat(Tensor.rand(3, 4).reshape(3, k), dim=1)
     st = t.lazydata.st
-    assert st.shape == (3, i+j+k)
-    assert st.real_strides() == (i+j+k, 1)
+    assert st.shape == (3, i + j + k)
+    assert st.real_strides() == (i + j + k, 1)
+
 
 class TestSymbolicVarVals(unittest.TestCase):
   def test_var_vals_empty(self):
@@ -54,13 +56,13 @@ class TestSymbolicVarVals(unittest.TestCase):
 
   def test_var_vals_offset(self):
     x = Variable("x", 1, 100).bind(3)
-    st = ShapeTracker.from_shape((4, 3)).shrink(((x, x+1), (0, 3)))
+    st = ShapeTracker.from_shape((4, 3)).shrink(((x, x + 1), (0, 3)))
     assert st.views[-1].offset == x * 3
     assert st.var_vals == {Variable("x", 1, 100): 3}
 
   def test_var_vals_mask(self):
     x = Variable("x", 1, 100).bind(3)
-    view = View.create(shape=(3,4), strides=(4,1), offset=0, mask=((0, x), (0, 4)))
+    view = View.create(shape=(3, 4), strides=(4, 1), offset=0, mask=((0, x), (0, 4)))
     st = ShapeTracker(views=(view,))
     assert st.var_vals == {Variable("x", 1, 100): 3}
 
@@ -68,15 +70,16 @@ class TestSymbolicVarVals(unittest.TestCase):
     x = Variable("x", 1, 100).bind(3)
     y = Variable("y", 1, 100).bind(4)
     z = Variable("z", 1, 100).bind(5)
-    st = ShapeTracker.from_shape((x, 5, y)).shrink(((0, x), (z, z+1), (0, 3)))
+    st = ShapeTracker.from_shape((x, 5, y)).shrink(((0, x), (z, z + 1), (0, 3)))
     assert st.views[-1].offset == y * z
-    assert st.var_vals == {Variable("x", 1, 100): 3, Variable("y", 1, 100):4, Variable("z", 1, 100): 5}
+    assert st.var_vals == {Variable("x", 1, 100): 3, Variable("y", 1, 100): 4, Variable("z", 1, 100): 5}
 
   def test_shrink_reshape(self):
     x = Variable("x", 1, 100).bind(3)
-    st = ShapeTracker.from_shape((10, 10, 10)).shrink(((x, x+3), (3, 7), (2, 5)))
-    st = st.reshape((3*4*3,))
+    st = ShapeTracker.from_shape((10, 10, 10)).shrink(((x, x + 3), (3, 7), (2, 5)))
+    st = st.reshape((3 * 4 * 3,))
     assert st.var_vals == {Variable("x", 1, 100): 3}
+
 
 class TestShapeTrackerUnbind(unittest.TestCase):
   def test_view_unbind(self):
@@ -97,10 +100,11 @@ class TestShapeTrackerUnbind(unittest.TestCase):
   def test_shrink_unbind(self):
     v = Variable("v", 1, 100)
     bv = Variable("v", 1, 100).bind(2)
-    t = Tensor.rand(3, 4).shrink(((bv, bv+1), (0, 4)))
+    t = Tensor.rand(3, 4).shrink(((bv, bv + 1), (0, 4)))
     unbound_st, var_val = t.lazydata.st.unbind()
-    assert unbound_st == ShapeTracker((View.create(shape=(1, 4), offset=4*v),))
+    assert unbound_st == ShapeTracker((View.create(shape=(1, 4), offset=4 * v),))
     assert var_val == {v: 2}
+
 
 class TestSymbolicReshape(unittest.TestCase):
   def test_reshape_into_symbols_simple(self):
@@ -122,10 +126,10 @@ class TestSymbolicReshape(unittest.TestCase):
   def test_reshape_into_symbols_bad_shape(self):
     vi = Variable("i", 1, 10).bind(4)
     # TODO: this never actually worked, it relied on lazy
-    #with self.assertRaises(ValueError):
+    # with self.assertRaises(ValueError):
     #  Tensor.rand(4, 6).reshape(vi, 6).reshape(1, 77) # reshape to a different size new shape through symbolic shape
     with self.assertRaises(AssertionError):
-      Tensor.rand(3, 4).reshape(3, (vi+1)) # reshape into non-Variable Node
+      Tensor.rand(3, 4).reshape(3, (vi + 1))  # reshape into non-Variable Node
 
   def test_two_symbol_reshape(self):
     for i in range(1, 6):
@@ -143,13 +147,26 @@ class TestSymbolicReshape(unittest.TestCase):
   def test_symbolic_mask(self):
     # taken from gpt2 single kvcache
     # these two caused problems in gpt2 if reshape merged views
-    view = View(shape=(1, (NumNode(1)+Variable('start_pos', 1, 128).bind(2)), 16, 64), strides=(0, 0, 64, 1), offset=NumNode(1024), mask=((0, 1), (Variable('start_pos', 1, 128).bind(2), (NumNode(1)+Variable('start_pos', 1, 128).bind(2))), (0, 16), (0, 64)), contiguous=False)   # noqa: E501
-    new_shape = (1, 1, (NumNode(1)+Variable('start_pos', 1, 128).bind(2)), 16, 64)
+    view = View(
+      shape=(1, (NumNode(1) + Variable("start_pos", 1, 128).bind(2)), 16, 64),
+      strides=(0, 0, 64, 1),
+      offset=NumNode(1024),
+      mask=((0, 1), (Variable("start_pos", 1, 128).bind(2), (NumNode(1) + Variable("start_pos", 1, 128).bind(2))), (0, 16), (0, 64)),
+      contiguous=False,
+    )  # noqa: E501
+    new_shape = (1, 1, (NumNode(1) + Variable("start_pos", 1, 128).bind(2)), 16, 64)
     assert view.reshape(new_shape) is None
 
-    view = View(shape=(2, 1, (NumNode(1)+Variable('start_pos', 1, 128)), 16, 64), strides=(0, 0, 1024, 64, 1), offset=131072, mask=((1, 2), (0, 1), (0, (NumNode(1)+Variable('start_pos', 1, 128))), (0, 16), (0, 64)), contiguous=False)   # noqa: E501
-    new_shape = (2, (NumNode(1)+Variable('start_pos', 1, 128)), 16, 64)
+    view = View(
+      shape=(2, 1, (NumNode(1) + Variable("start_pos", 1, 128)), 16, 64),
+      strides=(0, 0, 1024, 64, 1),
+      offset=131072,
+      mask=((1, 2), (0, 1), (0, (NumNode(1) + Variable("start_pos", 1, 128))), (0, 16), (0, 64)),
+      contiguous=False,
+    )  # noqa: E501
+    new_shape = (2, (NumNode(1) + Variable("start_pos", 1, 128)), 16, 64)
     assert view.reshape(new_shape) is None
+
 
 class TestSymbolicExpand(unittest.TestCase):
   def test_expand_into_symbols(self):
@@ -167,11 +184,13 @@ class TestSymbolicExpand(unittest.TestCase):
       a = a + 1
       assert a.shape == (3, vi)
 
+
 class TestSymbolicShrink(unittest.TestCase):
   def test_shrink_symbols(self):
     vi = Variable("i", 1, 5)
-    t = Tensor.rand(3, 5).shrink(((0, 2), (vi, vi+1)))
+    t = Tensor.rand(3, 5).shrink(((0, 2), (vi, vi + 1)))
     assert t.shape == (2, 1)
+
 
 class TestSymbolicShapeExpr(unittest.TestCase):
   def test_symbolic_expr_idxs(self):
@@ -180,11 +199,12 @@ class TestSymbolicShapeExpr(unittest.TestCase):
     gidx0 = Variable("gidx0", 0, i)
     lidx1 = Variable("lidx1", 0, 7)
     idx = (gidx0, lidx1, NumNode(1))
-    shape = (i+1, 8, 4)
-    strides = (1, (i*4)+4, i+1)
-    st = ShapeTracker((View.create(shape, strides), ))
+    shape = (i + 1, 8, 4)
+    strides = (1, (i * 4) + 4, i + 1)
+    st = ShapeTracker((View.create(shape, strides),))
     idx, _valid = st.expr_idxs(idx)
     assert idx.render() == "((lidx1*((i*4)+4))+1+gidx0+i)"
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   unittest.main()

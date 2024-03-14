@@ -5,10 +5,11 @@ from tinygrad.device import Device
 from tinygrad.realize import create_schedule
 from tinygrad.codegen.linearizer import Linearizer
 
+
 class TestHIPCompileSpeed(unittest.TestCase):
   @unittest.skipIf(Device.DEFAULT != "HIP", "only run on HIP")
   def test_hip_compile(self):
-    a, b = Tensor([1,2,3,4,5]), Tensor([1,2,3,4,5])
+    a, b = Tensor([1, 2, 3, 4, 5]), Tensor([1, 2, 3, 4, 5])
     out = a + b
     lin = Linearizer(create_schedule([out.lazydata])[-1].ast[0])
     lin.linearize()

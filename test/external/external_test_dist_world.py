@@ -1,5 +1,6 @@
 from extra import dist
 from tinygrad.features.jit import TinyJit
+
 if __name__ == "__main__":
   dist.preinit()
 
@@ -8,15 +9,19 @@ from tinygrad.helpers import CI, getenv
 from tinygrad.tensor import Tensor
 import numpy as np
 
+
 @TinyJit
 def send_jit(t, target_rank) -> Tensor:
   return world.send(t, target_rank).realize()
+
 
 @TinyJit
 def recv_jit(t, target_rank) -> Tensor:
   return world.recv(t, target_rank).realize()
 
+
 SIZE = 2048 if not CI else 2
+
 
 def run():
   # set a deterministic seed so that both ranks generate the same random tensor
@@ -49,6 +54,7 @@ def run():
 
   print(f"rank {rank} passed")
 
+
 if __name__ == "__main__":
   if getenv("HIP"):
     devices = ["hip:0", "hip:1"]
@@ -61,8 +67,10 @@ if __name__ == "__main__":
   processes = []
   for rank, device in enumerate(devices):
     processes.append(dist.spawn(rank, device, fn=run, args=()))
-  for p in processes: p.join()
+  for p in processes:
+    p.join()
 
   # exit with error code if any of the processes failed
   for p in processes:
-    if p.exitcode != 0: exit(p.exitcode)
+    if p.exitcode != 0:
+      exit(p.exitcode)

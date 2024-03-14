@@ -6,6 +6,7 @@ from examples.llama import LLaMa
 from tinygrad.tensor import Tensor
 from tinygrad import Device
 
+
 class LLaMaAdaptor(BaseLM):
   def __init__(
     self,
@@ -75,29 +76,31 @@ class LLaMaAdaptor(BaseLM):
   def greedy_until(self, requests):
     continuations = []
     for request in requests:
-      prompt, until = request[0], request[1]['until']
+      prompt, until = request[0], request[1]["until"]
       output = self.llama.greedy_until(prompt, until, max_length=128, temperature=0.0)
-      continuations.append(output[len(prompt):])
+      continuations.append(output[len(prompt) :])
     return continuations
 
   def _model_generate(self, context, max_length, eos_token_id):
     raise NotImplementedError()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   print(f"using {Device.DEFAULT} backend")
 
-  parser = argparse.ArgumentParser(description='Run LLaMA evals in tinygrad', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--size', type=str, default="7B", help="Size of model to use [7B, 13B, 30B, 65B] for Gen 1, [7B, 13B] for Gen 2")
-  parser.add_argument('--gen', type=int, default="1", help="Generation of the model to use [1, 2]")
-  parser.add_argument('--quantize', action='store_true', help="Quantize the weights to int8 in memory")
-  parser.add_argument('--eval', type=str, default="arc_easy", help="Run in evaluation mode")
-  parser.add_argument('--limit', type=int, default=None, help="Limit tests in eval")
-  parser.add_argument('--weights', type=str, default="./weights/LLaMa/", help="Location of the weights")
-  parser.add_argument('--tokenizer', type=str, default="./weights/LLaMa/tokenizer.model", help="Location of the tokenizer")
+  parser = argparse.ArgumentParser(description="Run LLaMA evals in tinygrad", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("--size", type=str, default="7B", help="Size of model to use [7B, 13B, 30B, 65B] for Gen 1, [7B, 13B] for Gen 2")
+  parser.add_argument("--gen", type=int, default="1", help="Generation of the model to use [1, 2]")
+  parser.add_argument("--quantize", action="store_true", help="Quantize the weights to int8 in memory")
+  parser.add_argument("--eval", type=str, default="arc_easy", help="Run in evaluation mode")
+  parser.add_argument("--limit", type=int, default=None, help="Limit tests in eval")
+  parser.add_argument("--weights", type=str, default="./weights/LLaMa/", help="Location of the weights")
+  parser.add_argument("--tokenizer", type=str, default="./weights/LLaMa/tokenizer.model", help="Location of the tokenizer")
   args = parser.parse_args()
 
   # run eval and exit
-  adaptor = LLaMaAdaptor(model_gen=args.gen, model_size=args.size, quantize=args.quantize,
-                         checkpoint_path=args.weights, tokenizer_path=args.tokenizer, device="cpu")
+  adaptor = LLaMaAdaptor(
+    model_gen=args.gen, model_size=args.size, quantize=args.quantize, checkpoint_path=args.weights, tokenizer_path=args.tokenizer, device="cpu"
+  )
   results = evaluator.evaluate(adaptor, tasks.get_task_dict(args.eval.split(",")), False, 0, args.limit)
   print(json.dumps(results, indent=2))
